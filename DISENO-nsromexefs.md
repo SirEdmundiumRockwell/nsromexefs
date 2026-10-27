@@ -190,11 +190,14 @@ SHA-256 de 0x20), tabla de nombres UTF-8, datos.
 Implementación (M4): `Hfs0::read_at` recibe el offset donde empieza el contenedor y el límite
 válido, y devuelve **offsets absolutos** dentro del archivo. El XCI se lee con `Xci::read`, que
 resuelve el HFS0 raíz desde `hfs0_offset`, ignora las particiones de tamaño cero (cartucho
-recortado) y registra los errores de una partición sin perder las demás. La partición `update`
-se abre aparte y se fusiona con `secure` cuando su CNMT es un `Patch` de la misma aplicación;
-si hay más de un update (por ejemplo el interno del XCI y un NSP suelto) gana la versión más
-alta y se avisa. Un cartucho **no contiene tickets**: la clave del programa debe estar en
-`title.keys` o la extracción falla con `E_KEY_TITLEKEY_MISSING`.
+recortado) y registra los errores de una partición sin perder las demás. Tanto `secure` como la
+partición `update` pueden contener **varios CNMT** (base + update en un XCI "con update", o
+base + DLC en un NSP): se abren y clasifican todos, no solo el primero. La partición `update`
+se fusiona con `secure` cuando su CNMT es un `Patch` de la misma aplicación; si hay más de un
+update (por ejemplo el interno del XCI y un NSP suelto) gana la versión más alta y se avisa.
+Los cartuchos no suelen incluir tickets: si una NCA usa rights id y no hay ticket, la clave
+debe estar en `title.keys` (`E_KEY_TITLEKEY_MISSING`). Las NCA de un cartucho genuino suelen
+usar **key area**, así que `prod.keys` basta.
 
 ### 5.2 NCA
 
@@ -756,13 +759,18 @@ update encajan con lo descrito en §5.5 (7 relocalizaciones, 4 parcheadas, `tota
 
 **M4 validado**: `batch` sobre la carpeta con los NSP reales de base + update produjo
 3.842/3.842 archivos idénticos por SHA-256 al árbol de referencia en 12,9 s, con layout
-`01006BB00C6F0000/v1.1.0`. No había un cartucho comercial disponible, así que la ruta XCI se
-validó con un **XCI sintético** construido a partir de las NCA reales (particiones `secure`
-y `update`, sin tickets): `info` mostró las 4 particiones y los dos títulos, y `dump --tree`
-fusionó el update interno dando 3.842/3.842 archivos idénticos en 11,5 s usando `title.keys`.
-Sin `title.keys`, el XCI falla con `E_KEY_TITLEKEY_MISSING` (código 2), como corresponde a un
-cartucho sin tickets. El caso de lote con solo un update devuelve `E_BASE_MISSING` por título
-y termina en `E_BATCH_FAILED` (código 3).
+`01006BB00C6F0000/v1.1.0`.
+
+Después se validó con un **XCI real** (*Link's Awakening* 1.1.0, 6,31 GB) que resultó ser un
+cartucho "con update": `secure` contiene 11 entradas y **dos CNMT** (base v1.0.0 + update
+v1.1.0), mientras que la partición `update` está vacía (512 B). `info` mostró las 4
+particiones y ambos títulos; `dump --tree` y `batch` fusionaron el update interno y dieron
+**3.842/3.842 archivos idénticos en ~12 s usando solo `prod.keys`** (base por key area,
+update con ticket). La prueba descubrió que la CLI solo leía el primer CNMT de la tabla:
+se corrigió para abrir **todos** los CNMT de `secure` y de la partición `update`. El XCI
+sintético anterior cubre además el caso de un contenedor sin tickets, que exige `title.keys`.
+El caso de lote con solo un update devuelve `E_BASE_MISSING` por título y termina en
+`E_BATCH_FAILED` (código 3).
 
 Total: **~8 días** de implementación del CLI. M3 era el único con riesgo real; el resto es mecánico.
 
@@ -1158,8 +1166,10 @@ Y+0x170 AccountID         0x04
 - Particiones habituales: `secure` (contenido del juego), `update` (parche) y `normal`.
 - En cartucho las NCA suelen no tener rights id y usar **key area**; el orden de derivación de §8.1
   ya lo contempla.
-- Un cartucho **no incluye tickets** (`.tik`): si la NCA de programa tiene rights id, la clave
-  debe aportarse en `title.keys`. Es la diferencia práctica frente a un NSP.
+- Un cartucho puede no incluir tickets (`.tik`). Si una NCA de programa tiene rights id y no hay
+  ticket en el contenedor, la clave debe aportarse en `title.keys`.
+- `secure` puede contener varios CNMT (base + update en un XCI "con update"); se leen todos y
+  se clasifican por su `ContentMetaType`.
 - XCI recortados (sin `update`) son válidos: el update simplemente no existe; las particiones
   de tamaño cero se ignoran.
 
@@ -1199,7 +1209,11 @@ La agrupación es por `title_id` del CNMT, no por nombre de archivo:
 - Update: `Patch`, con `patch.application_id` igual al title id de la base.
 - DLC: `AddOnContent`, todos bajo el `application_id` del juego.
 
-Un NSP puede contener varios contenidos (base + DLC a la vez): se procesan todos.
+Un NSP puede contener varios contenidos (base + DLC a la vez): el motor los detecta y `batch`
+los agrupa por aplicación cuando están en archivos separados. En v0.1 `dump` extrae **un
+título por invocación**; si un mismo archivo combina base y DLC, se rechaza con un error
+explícito en lugar de ignorar uno de los dos. La extracción de varios títulos desde un archivo
+combinado queda para M5.
 
 ---
 

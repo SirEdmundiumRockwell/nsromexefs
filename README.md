@@ -108,8 +108,12 @@ nsromexefs batch "carpeta de juegos" -o salida -k prod.keys -k title.keys
 
 - Un **XCI** se abre por su cabecera `HEAD` y su HFS0 raíz: `secure` aporta el juego y, si
   existe, la partición `update` se fusiona automáticamente con la base en la misma pasada.
-- Un cartucho **no lleva tickets**: la clave del programa debe venir de `title.keys`. Sin ella
-  el error es `E_KEY_TITLEKEY_MISSING` (código de salida 2) con una pista explícita.
+- Un mismo contenedor puede llevar **varios CNMT**: es habitual que un XCI "con update"
+  guarde la base y el update dentro de `secure` (la partición `update` puede estar vacía).
+  `dump`, `info` y `batch` leen todos los CNMT, no solo el primero.
+- Los cartuchos no suelen incluir tickets. Si una NCA usa rights id y no hay ticket, la clave
+  debe venir de `title.keys`; el error es `E_KEY_TITLEKEY_MISSING` (código de salida 2). Las
+  NCA de un cartucho genuino suelen usar **key area**, así que `prod.keys` basta.
 - `--tree` organiza la salida como `<app_id>/v<versión>` para base/update y
   `<app_id>/dlc/<dlc_id>/v<versión>` para DLC. La versión se sanea antes de usarla como
   nombre de directorio.
@@ -119,13 +123,13 @@ nsromexefs batch "carpeta de juegos" -o salida -k prod.keys -k title.keys
 - Un título que falla **no aborta el lote**: se registra, se continúa y el código de salida
   resume el conjunto (`E_BATCH_FAILED`; 3 si todos los fallos son de base, 1 si son mixtos).
 
-Validación de M4: `batch` sobre los NSP reales de *Link's Awakening* produjo 3.842/3.842
-archivos idénticos a la referencia en 12,9 s. Para la ruta XCI no había un cartucho real
-disponible: se construyó un **XCI sintético con las NCA reales** (particiones `secure` y
-`update`, sin tickets) y se extrajo con `title.keys`, obteniendo también 3.842/3.842 archivos
-idénticos en 11,5 s. El parser HFS0/XCI está cubierto con pruebas unitarias y con esa
-validación de extremo a extremo, pero **aún no se ha probado con un volcado de cartucho
-comercial**.
+Validación de M4 con **XCI real** (*Link's Awakening* 1.1.0, 6,31 GB): el cartucho trae 11
+entradas en `secure` con **dos CNMT** (base v1.0.0 y update v1.1.0) y la partición `update`
+vacía. `dump --tree` y `batch` detectaron ambos títulos, fusionaron el update y produjeron
+**3.842/3.842 archivos idénticos a la referencia en ~12 s usando solo `prod.keys`** (la base
+va por key area y el update trae su ticket). Esa prueba descubrió y corrigió un fallo real:
+antes solo se leía el primer CNMT del contenedor. El XCI sintético anterior sigue cubriendo
+el caso de un cartucho recortado sin tickets, que exige `title.keys`.
 
 **Inspección sin extraer:**
 

@@ -170,22 +170,31 @@ pub(crate) fn open_table(file: &mut File, path: &Path) -> Result<OpenedTable, Er
     })
 }
 
-/// Abre un archivo y devuelve el título base y, si el XCI trae una partición
-/// `update`, también su update. Un NSP produce un solo contenedor.
+/// Abre un archivo y devuelve **todos** los títulos que contiene: un NSP puede
+/// traer base + DLC, y un XCI puede traer base + update dentro de `secure` o en
+/// su partición `update`.
 pub(crate) fn open_containers(path: &Path, keys: &KeySet) -> Result<Vec<Container>, Error> {
     let mut file = File::open(path)?;
     let opened = open_table(&mut file, path)?;
     let OpenedTable { table, xci, .. } = opened;
 
-    let mut containers = vec![resolve_container(file, table, keys, path)?];
+    if table.meta_entries().next().is_none() {
+        return Err(no_meta_error(path));
+    }
+
+    let mut containers = Vec::new();
+    for meta in table.meta_entries() {
+        let file = File::open(path)?;
+        containers.push(resolve_container(file, meta, &table, keys, path)?);
+    }
 
     if let Some(xci) = xci {
         if let Some(update) = xci.partition("update") {
-            let table = EntryTable::from_hfs0(&update.hfs0);
+            let update_table = EntryTable::from_hfs0(&update.hfs0);
             // Una partición update vacía o sin CNMT no aporta nada.
-            if table.meta_entries().next().is_some() {
-                let update_file = File::open(path)?;
-                containers.push(resolve_container(update_file, table, keys, path)?);
+            for meta in update_table.meta_entries() {
+                let file = File::open(path)?;
+                containers.push(resolve_container(file, meta, &update_table, keys, path)?);
             }
         }
     }
@@ -193,7 +202,7 @@ pub(crate) fn open_containers(path: &Path, keys: &KeySet) -> Result<Vec<Containe
     Ok(containers)
 }
 
-/// Lee solo el CNMT de cada título presente en el archivo (base y, si existe,
+/// Lee solo el CNMT de cada título presente en el archivo (base, update, DLC y
 /// la partición `update` del XCI). Sirve para agrupar en modo lote sin gastar
 /// tiempo en claves de contenido que aún no hacen falta.
 pub(crate) fn probe_titles(path: &Path, keys: &KeySet) -> Result<Vec<ProbeInfo>, Error> {
@@ -201,22 +210,45 @@ pub(crate) fn probe_titles(path: &Path, keys: &KeySet) -> Result<Vec<ProbeInfo>,
     let opened = open_table(&mut file, path)?;
     let OpenedTable { table, xci, .. } = opened;
 
+    if table.meta_entries().next().is_none() {
+        return Err(no_meta_error(path));
+    }
+
     let mut probes = Vec::new();
-    let (meta_info, _) = read_meta_info(&mut file, &table, keys, path)?;
-    probes.push(ProbeInfo::from_cnmt(&meta_info));
+    probe_table(&mut file, &table, keys, &mut probes)?;
 
     if let Some(xci) = xci {
         if let Some(update) = xci.partition("update") {
             let table = EntryTable::from_hfs0(&update.hfs0);
             if table.meta_entries().next().is_some() {
-                if let Ok((meta_info, _)) = read_meta_info(&mut file, &table, keys, path) {
-                    probes.push(ProbeInfo::from_cnmt(&meta_info));
-                }
+                probe_table(&mut file, &table, keys, &mut probes)?;
             }
         }
     }
 
     Ok(probes)
+}
+
+/// Lee todos los CNMT de una tabla. Un mismo contenedor puede llevar varios
+/// títulos (base + update en un XCI, o base + DLC en un NSP).
+fn probe_table(
+    file: &mut File,
+    table: &EntryTable,
+    keys: &KeySet,
+    probes: &mut Vec<ProbeInfo>,
+) -> Result<(), Error> {
+    for meta in table.meta_entries() {
+        let (meta_info, _) = read_meta_info(file, meta, table, keys)?;
+        probes.push(ProbeInfo::from_cnmt(&meta_info));
+    }
+    Ok(())
+}
+
+fn no_meta_error(path: &Path) -> Error {
+    Error::Invalid(format!(
+        "{}: no hay ningún .cnmt.nca: no se puede identificar el título",
+        path.display()
+    ))
 }
 
 impl ProbeInfo {
@@ -243,11 +275,12 @@ impl ProbeInfo {
 /// `exefs`/`romfs` sobre una tabla de entradas ya abierta.
 fn resolve_container(
     mut file: File,
-    table: EntryTable,
+    meta_entry: &TableEntry,
+    table: &EntryTable,
     keys: &KeySet,
     path: &Path,
 ) -> Result<Container, Error> {
-    let (meta_info, tickets) = read_meta_info(&mut file, &table, keys, path)?;
+    let (meta_info, tickets) = read_meta_info(&mut file, meta_entry, table, keys)?;
 
     let program = meta_info
         .cnmt
@@ -294,7 +327,7 @@ fn resolve_container(
         .cloned();
     let display_version = read_display_version(
         &mut file,
-        &table,
+        table,
         &meta_info.cnmt.contents,
         keys,
         &tickets.list,
@@ -315,17 +348,10 @@ fn resolve_container(
 /// Lee la NCA de metadatos y su CNMT, junto con los tickets del contenedor.
 fn read_meta_info(
     file: &mut File,
+    meta_entry: &TableEntry,
     table: &EntryTable,
     keys: &KeySet,
-    path: &Path,
 ) -> Result<(MetaInfo, TicketList), Error> {
-    let meta_entry = table.meta_entries().next().ok_or_else(|| {
-        Error::Invalid(format!(
-            "{}: no hay ningún .cnmt.nca: no se puede identificar el título",
-            path.display()
-        ))
-    })?;
-
     let tickets = read_tickets(file, table);
     let meta_header = NcaHeader::read_at(
         file,

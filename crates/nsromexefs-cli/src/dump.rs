@@ -207,7 +207,8 @@ pub(crate) fn dump_paths(
                 MetaType::Application | MetaType::AddOnContent => {
                     if base.is_some() {
                         return Err(Error::Invalid(
-                            "se indicaron dos contenedores base; dump admite uno como máximo"
+                            "hay más de un título base o DLC en los contenedores indicados; \
+                             dump extrae un título por invocación"
                                 .into(),
                         ));
                     }
