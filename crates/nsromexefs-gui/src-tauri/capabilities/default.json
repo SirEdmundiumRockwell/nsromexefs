@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Permisos básicos de la ventana principal de nsromexefs.",
+  "windows": ["main"],
+  "permissions": ["core:default", "dialog:allow-open"]
+}

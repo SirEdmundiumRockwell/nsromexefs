@@ -1,6 +1,9 @@
 # Compilación
 /target
 **/*.rs.bk
+**/node_modules/
+crates/nsromexefs-gui/frontend/dist/
+crates/nsromexefs-gui/src-tauri/gen/
 
 # Extracción: temporales y estado
 *.nrx-tmp
