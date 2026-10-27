@@ -1488,11 +1488,12 @@ nsromexefs/
 | Canal | Contenido |
 |---|---|
 | Windows | `nsromexefs-x86_64-pc-windows-msvc.zip` (portable) + instalador NSIS (v2, con GUI) |
-| Linux | binario estático `x86_64-unknown-linux-musl` |
-| macOS | `aarch64-apple-darwin` y `x86_64-apple-darwin` |
+| Linux | `nsromexefs-x86_64-unknown-linux-gnu.tar.gz` (portable; requiere glibc compatible) |
+| macOS | `aarch64-apple-darwin` y `x86_64-apple-darwin` (tar.gz) |
 | Crates.io | `cargo install nsromexefs-cli` |
 
-- Checksums `SHA256SUMS` en cada release.
+- El workflow de tag `v*` valida que el tag coincida con la versión Cargo, compila las cuatro
+  variantes y crea un borrador de GitHub Release con `SHA256SUMS`; una persona revisa y publica.
 - CI: fmt + Clippy + tests + build release en cada PR/push, en Windows, Linux y macOS.
 - Fuzzing corto y release firmado por tag siguen pendientes; no hay publicación automática todavía.
 - Sin auto-actualización en v1.

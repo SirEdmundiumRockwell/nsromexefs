@@ -224,6 +224,16 @@ juego.nsp
 - Un archivo de claves obtenido de tu propia consola (`prod.keys` y, opcionalmente, `title.keys`).
 - Nada más: el binario será autocontenido.
 
+## Descargas
+
+Las versiones publicadas en **Releases** incluyen paquetes portables para Windows x64, Linux
+x64 (glibc) y macOS (Apple Silicon e Intel), junto con `SHA256SUMS`. Descarga el paquete de tu
+plataforma, extráelo y ejecuta `nsromexefs --help`. Para verificar un paquete, compara el hash
+SHA-256 del archivo con la línea correspondiente de `SHA256SUMS`.
+
+Los tags `vX.Y.Z` crean una release en borrador tras validar la versión y compilar los paquetes.
+El borrador requiere revisión y publicación manual; crear el workflow no publica una versión.
+
 ## Aviso legal
 
 `nsromexefs` **no** distribuye claves, contenido de juegos ni herramientas de elusión.
