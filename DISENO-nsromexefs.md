@@ -1478,7 +1478,7 @@ nsromexefs/
     nsromexefs-cli/     bin: clap, indicatif, salida humana/JSON
     nsromexefs-gui/     (v2) tauri
   docs/
-    claves.md           (pendiente)
+    claves.md           guía de uso y manejo seguro de claves
   tests/
     fixtures/           corpus dorado (manifiestos de hash, no el contenido)
 ```
@@ -1493,7 +1493,8 @@ nsromexefs/
 | Crates.io | `cargo install nsromexefs-cli` |
 
 - Checksums `SHA256SUMS` en cada release.
-- CI: build + tests + fuzzing corto en cada PR; release firmado por tag.
+- CI: fmt + Clippy + tests + build release en cada PR/push, en Windows, Linux y macOS.
+- Fuzzing corto y release firmado por tag siguen pendientes; no hay publicación automática todavía.
 - Sin auto-actualización en v1.
 
 ### 24.4 Configuración

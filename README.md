@@ -214,6 +214,7 @@ juego.nsp
 ## Documentación
 
 - [**Diseño técnico**](DISENO-nsromexefs.md) — arquitectura, formatos, algoritmos y plan.
+- [Guía de claves](docs/claves.md) — formatos admitidos, validación y manejo seguro.
 - [Licencia](LICENSE) — MIT.
 - [Créditos y licencias de terceros](THIRD-PARTY-NOTICES.md).
 
