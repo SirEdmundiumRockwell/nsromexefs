@@ -1,7 +1,7 @@
 # nsromexefs — Diseño técnico
 
-> **Estado:** v0.1 · diseño cerrado · M0-M3 implementados y validados sobre NSP reales · M4-M6 pendientes
-> **Versión del documento:** 1.1
+> **Estado:** v0.1 · diseño cerrado · M0-M4 implementados y validados (NSP reales y XCI sintético) · M5-M6 pendientes
+> **Versión del documento:** 1.2
 > **Fecha:** 2026-10-27 (rev. de la 1.0 del 2026-10-25)
 > **Autor:** Sir Edmund Rockwell
 > **Licencia:** MIT — ver [`LICENSE`](LICENSE) y [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md)
@@ -182,6 +182,19 @@ XCI (HFS0)
 PFS0: cabecera `0x10` (`PFS0`, num_files, string_table_size, reservado), luego `0x18` por entrada
 (offset relativo al inicio de datos, tamaño, offset del nombre, reservado), tabla de nombres UTF-8,
 datos.
+
+HFS0: cabecera `0x10` (`HFS0`, num_files, string_table_size, reservado), luego `0x40` por entrada
+(offset relativo al inicio de datos, tamaño, offset del nombre, `hashed_size`, reservado y hash
+SHA-256 de 0x20), tabla de nombres UTF-8, datos.
+
+Implementación (M4): `Hfs0::read_at` recibe el offset donde empieza el contenedor y el límite
+válido, y devuelve **offsets absolutos** dentro del archivo. El XCI se lee con `Xci::read`, que
+resuelve el HFS0 raíz desde `hfs0_offset`, ignora las particiones de tamaño cero (cartucho
+recortado) y registra los errores de una partición sin perder las demás. La partición `update`
+se abre aparte y se fusiona con `secure` cuando su CNMT es un `Patch` de la misma aplicación;
+si hay más de un update (por ejemplo el interno del XCI y un NSP suelto) gana la versión más
+alta y se avisa. Un cartucho **no contiene tickets**: la clave del programa debe estar en
+`title.keys` o la extracción falla con `E_KEY_TITLEKEY_MISSING`.
 
 ### 5.2 NCA
 
@@ -548,21 +561,25 @@ salida/
 
 Es lo que espera cualquier proyecto de recompilación: dos carpetas con esos nombres exactos.
 
-En v0.1 (M0-M3) `manifest.json` todavía no se escribe; `SHA256SUMS` sí. El manifest llega
+En v0.1 (M0-M4) `manifest.json` todavía no se escribe; `SHA256SUMS` sí. El manifest llega
 en M6 (§9.3).
 
 ### 9.2 `--tree`: un directorio por título y versión
 
 ```
 salida/
-  <title_id>/
+  <app_id>/
     v1.1.0/
-      exefs/  romfs/  manifest.json  SHA256SUMS
+      exefs/  romfs/  SHA256SUMS
     dlc/<dlc_id>/v0/
-      romfs/  manifest.json
+      romfs/  SHA256SUMS
 ```
 
-Obligatorio en modo lote (si no, dos juegos se pisarían).
+- `<app_id>` es el title id de la **aplicación** (para un update, el de su base; para un DLC,
+  el del juego al que pertenece), de modo que base, update y DLC quedan juntos.
+- `<versión>` es la versión visible de `control.nacp` cuando se puede leer; si no, el entero
+  del CNMT. Se sanea (solo `A-Z a-z 0-9 . - _`) antes de usarla como componente de ruta.
+- Obligatorio en modo lote (si no, dos juegos se pisarían). `batch` lo fuerza siempre.
 
 ### 9.3 `manifest.json`
 
@@ -625,12 +642,34 @@ nsromexefs keys   --check <archivo.keys>           # valida y sanea un keyset
 | `--strict` | falla ante cualquier discrepancia de hash |
 | `--quiet` / `-v` | silencio / detalle |
 
-En v0.1 (M0-M3) están implementadas `-k`, `-o`, `--exefs-only`, `--romfs-only`, `--force`,
-`--dry-run`, `--json` y `-v`. El resto de la tabla llega en M4-M6.
+En v0.1 (M0-M4) están implementadas `-k`, `-o`, `--tree`, `--exefs-only`, `--romfs-only`,
+`--force`, `--dry-run`, `--json` y `-v`. El resto de la tabla llega en M5-M6.
 
 `dump` acepta **uno o dos** contenedores: la base y, opcionalmente, su update. El orden es
 indiferente y la clasificación se hace por el CNMT. Un update sin base termina con
-`E_BASE_MISSING` (código 3).
+`E_BASE_MISSING` (código 3). Un `.xci` aporta en una sola invocación su base (`secure`) y su
+update interno cuando corresponde.
+
+### Opciones de `batch`
+
+```
+nsromexefs batch <DIR> [-o DIR] [--exefs-only|--romfs-only] [--dry-run] [--force] [-v] [--json]
+```
+
+| Opción | Efecto |
+|---|---|
+| `DIR` | carpeta que se recorre **recursivamente** en busca de `.nsp`/`.xci` |
+| `-o, --out <dir>` | raíz de salida (por defecto `./nsromexefs-out`) |
+| `--exefs-only` / `--romfs-only` | limitan lo extraído |
+| `--dry-run` | plan completo sin escribir |
+| `--force` | permite reemplazar extracciones previas |
+| `-v` | lista cada archivo |
+| `--json` | resumen legible por máquina |
+
+El layout de árbol es siempre obligatorio. Los `.nsz`/`.xcz` se reportan como omitidos y los
+enlaces simbólicos se ignoran. Un fallo por título no aborta el lote: al final se devuelve
+`E_BATCH_FAILED` con el recuento y un código agregado (el código común si todos los fallos
+coinciden; `1` si son mixtos).
 
 ### Opciones globales
 
@@ -675,7 +714,7 @@ Medido en el caso real (Ryzen 5 9600X, NVMe):
 
 Objetivo de `nsromexefs`: una sola pasada, sin intermedios, 5,8 GB en ~30-50 s, memoria < 100 MB.
 Medido en el caso real: 6,26 GB en 12,3 s, ~510 MB/s, muy por encima del objetivo.
-El modelo de concurrencia previsto para M4-M6 está en §20.
+El modelo de concurrencia previsto para M5-M6 está en §20.
 
 ---
 
@@ -698,7 +737,7 @@ El modelo de concurrencia previsto para M4-M6 está en §20.
 | **M1** | Cabecera NCA (XTS), key area, tickets, `title.keys` | muestra secciones y content key correcta | 1 d | ✅ |
 | **M2** | exefs + romfs base (CTR) + escritura atómica | 3.836 archivos y `main` de 14.984.660 B idénticos a la referencia | 1,5 d | ✅ |
 | **M3** | BKTR: tablas + CTR-EX + fusión base+update | 3.842 archivos con SHA256 idéntico al árbol de referencia | 1,5 d | ✅ |
-| **M4** | XCI/HFS0, lote (`batch`), `--tree` | `dump` de un `.xci` y de una carpeta completa | 1 d | ⏳ |
+| **M4** | XCI/HFS0, lote (`batch`), `--tree` | `dump` de un `.xci` y de una carpeta completa | 1 d | ✅ |
 | **M5** | Preflight, verificación, errores con código | mensajes de §11/§22 y `verify` OK | 1 d | ⏳ |
 | **M6** | `manifest.json`, `--resume`, `--json`, documentación | procesa una carpeta sin intervención | 1 d | ⏳ |
 
@@ -714,6 +753,16 @@ Comparado con el árbol 1.1.0 de referencia, **3.842/3.842 archivos idénticos p
 0 distintos**; extracción completa en ~12 s (`cargo build --release`). Las tablas reales del
 update encajan con lo descrito en §5.5 (7 relocalizaciones, 4 parcheadas, `total_size`
 0x17433AC00) aplicando solo las excepciones de layout ya previstas en ADR-03.
+
+**M4 validado**: `batch` sobre la carpeta con los NSP reales de base + update produjo
+3.842/3.842 archivos idénticos por SHA-256 al árbol de referencia en 12,9 s, con layout
+`01006BB00C6F0000/v1.1.0`. No había un cartucho comercial disponible, así que la ruta XCI se
+validó con un **XCI sintético** construido a partir de las NCA reales (particiones `secure`
+y `update`, sin tickets): `info` mostró las 4 particiones y los dos títulos, y `dump --tree`
+fusionó el update interno dando 3.842/3.842 archivos idénticos en 11,5 s usando `title.keys`.
+Sin `title.keys`, el XCI falla con `E_KEY_TITLEKEY_MISSING` (código 2), como corresponde a un
+cartucho sin tickets. El caso de lote con solo un update devuelve `E_BASE_MISSING` por título
+y termina en `E_BATCH_FAILED` (código 3).
 
 Total: **~8 días** de implementación del CLI. M3 era el único con riesgo real; el resto es mecánico.
 
@@ -917,9 +966,16 @@ ejecución.
 
 ### 19.5 Modo lote
 
-- Un subdirectorio por título/versión (`--tree` obligatorio).
+- `batch` recorre la carpeta de entrada de forma recursiva (sin seguir enlaces simbólicos) y
+  clasifica cada `.nsp`/`.xci` leyendo **solo el CNMT**; no necesita la titlekey del programa
+  para agrupar.
+- Agrupa por aplicación: elige la base y el update de versión más alta y todos los DLC (el más
+  alto de cada `dlc_id`). Un update del XCI y otro NSP del mismo juego no se duplican.
+- Un subdirectorio por título/versión (`--tree` obligatorio; `batch` lo fuerza).
 - Un fallo en un título **no aborta** el lote: se registra y se continúa.
-- Resumen final con `ok`/`error` por título y código de salida agregado.
+- Los `.nsz`/`.xcz` se reportan como omitidos (no se descomprimen en v1).
+- Resumen final con `ok`/`error`/`omitido` por título y código de salida agregado: si todos los
+  fallos comparten código se devuelve ese; si son mixtos, `1`.
 
 ---
 
@@ -1102,7 +1158,10 @@ Y+0x170 AccountID         0x04
 - Particiones habituales: `secure` (contenido del juego), `update` (parche) y `normal`.
 - En cartucho las NCA suelen no tener rights id y usar **key area**; el orden de derivación de §8.1
   ya lo contempla.
-- XCI recortados (sin `update`) son válidos: el update simplemente no existe.
+- Un cartucho **no incluye tickets** (`.tik`): si la NCA de programa tiene rights id, la clave
+  debe aportarse en `title.keys`. Es la diferencia práctica frente a un NSP.
+- XCI recortados (sin `update`) son válidos: el update simplemente no existe; las particiones
+  de tamaño cero se ignoran.
 
 ### 21.4 DLC
 
@@ -1128,7 +1187,7 @@ ignora; `--all-parts` la extrae como `logo/` junto a `exefs/` y `romfs/`.
 | Una base | se usa |
 | Varias bases | la de versión más alta ≤ update; si no hay update, la más alta |
 | Un update | se usa |
-| Varios updates | el más alto; `--version` fuerza uno |
+| Varios updates | el más alto; los demás se ignoran con un aviso (`--version` llegará en M5) |
 | Update sin base | error 3 (un futuro `--delta` extraerá solo los bloques de parche) |
 | Base con title id que no empareja | error: `patch.application_id` no coincide |
 

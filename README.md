@@ -4,10 +4,10 @@ Herramienta de línea de comandos que extrae **`exefs`** y **`romfs`** desde con
 **NSP** y **XCI** de Nintendo Switch — base, update y DLC — y fusiona los parches diferenciales
 (BKTR) en un solo paso.
 
-> **Estado:** v0.1 · **M0, M1, M2 y M3 completados y validados sobre NSP reales.**
-> `info`, `keys` y `dump` funcionan para contenedores base, DLC y updates, incluida la
-> fusión BKTR base+update en un solo paso con **3.842/3.842 archivos idénticos byte a byte**
-> al árbol de referencia. `manifest.json` todavía no se escribe (M6).
+> **Estado:** v0.1 · **M0, M1, M2, M3 y M4 completados y validados.**
+> `info`, `keys`, `dump` y `batch` funcionan con **NSP y XCI**, base, DLC y updates,
+> incluida la fusión BKTR base+update en un solo paso con **3.842/3.842 archivos idénticos
+> byte a byte** al árbol de referencia. `manifest.json` todavía no se escribe (M6).
 
 ---
 
@@ -25,12 +25,13 @@ salida/
   manifest.json   (M6 — todavía no se escribe)
 ```
 
-- Lee **NSP** (PFS0); **XCI** (HFS0) llega en M4.
+- Lee **NSP** (PFS0) y **XCI** (HFS0, incluida su partición `update` interna).
 - Detecta automáticamente base, update y DLC leyendo el **CNMT**, no el nombre del archivo,
   y acepta los contenedores en cualquier orden.
 - Deriva las claves de contenido desde el **ticket** o desde **`title.keys`**.
 - Fusiona los parches **BKTR** contra la base sin escribir NCA descifradas intermedias.
-- Previsto: selección de la versión más alta, `--tree`, lote, `verify` y manifest (M4-M6).
+- Extrae una carpeta completa con `batch` en un layout `<app_id>/v<versión>`.
+- Previsto: `verify` y manifest (M5-M6).
 
 ## Qué funciona hoy
 
@@ -98,6 +99,34 @@ Validación de la fusión sobre *Link's Awakening* 1.1.0 (base v0 + update v1.1.
 **3.842 de 3.842 archivos son idénticos byte a byte (SHA-256), 0 distintos**; la extracción
 completa tarda ~12 s.
 
+**Cartuchos XCI, layout por título y modo lote (M4):**
+
+```console
+nsromexefs dump juego.xci --tree -o salida -k prod.keys -k title.keys
+nsromexefs batch "carpeta de juegos" -o salida -k prod.keys -k title.keys
+```
+
+- Un **XCI** se abre por su cabecera `HEAD` y su HFS0 raíz: `secure` aporta el juego y, si
+  existe, la partición `update` se fusiona automáticamente con la base en la misma pasada.
+- Un cartucho **no lleva tickets**: la clave del programa debe venir de `title.keys`. Sin ella
+  el error es `E_KEY_TITLEKEY_MISSING` (código de salida 2) con una pista explícita.
+- `--tree` organiza la salida como `<app_id>/v<versión>` para base/update y
+  `<app_id>/dlc/<dlc_id>/v<versión>` para DLC. La versión se sanea antes de usarla como
+  nombre de directorio.
+- `batch` recorre la carpeta de forma recursiva, agrupa por aplicación (base, update y DLC),
+  elige la versión más alta de cada uno y extrae con layout de árbol. Ignora enlaces
+  simbólicos y reporta los `.nsz`/`.xcz` como omitidos.
+- Un título que falla **no aborta el lote**: se registra, se continúa y el código de salida
+  resume el conjunto (`E_BATCH_FAILED`; 3 si todos los fallos son de base, 1 si son mixtos).
+
+Validación de M4: `batch` sobre los NSP reales de *Link's Awakening* produjo 3.842/3.842
+archivos idénticos a la referencia en 12,9 s. Para la ruta XCI no había un cartucho real
+disponible: se construyó un **XCI sintético con las NCA reales** (particiones `secure` y
+`update`, sin tickets) y se extrajo con `title.keys`, obteniendo también 3.842/3.842 archivos
+idénticos en 11,5 s. El parser HFS0/XCI está cubierto con pruebas unitarias y con esa
+validación de extremo a extremo, pero **aún no se ha probado con un volcado de cartucho
+comercial**.
+
 **Inspección sin extraer:**
 
 ```console
@@ -139,7 +168,7 @@ juego.nsp
 | M1 — NCA (XTS), key area, tickets, CNMT | ✅ validado sobre NSP reales |
 | M2 — `exefs` + `romfs` (IVFC) | ✅ validado contra árbol de referencia (3.835/3.836 idénticos) |
 | M3 — fusión de parches BKTR | ✅ validado: 3.842/3.842 idénticos, 0 distintos |
-| M4 — XCI/HFS0, lote, `--tree` | ⏳ pendiente |
+| M4 — XCI/HFS0, lote, `--tree` | ✅ validado con XCI sintético y lote real (3.842/3.842) |
 | M5 — `verify` y preflight | ⏳ pendiente |
 | M6 — `manifest.json`, `--resume` | ⏳ pendiente |
 | GUI (Tauri 2 + Svelte) | ⏳ v2 (~5-6 días) |

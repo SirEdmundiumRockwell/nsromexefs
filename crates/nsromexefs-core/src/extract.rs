@@ -27,16 +27,10 @@ const MAX_PFS0_IN_MEMORY: u64 = 512 * 1024 * 1024;
 const MAX_META_TABLE: u64 = 256 * 1024 * 1024;
 const MAX_PATH_LEN: usize = 4096;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct WriteOptions {
     /// Sobrescribir archivos existentes.
     pub force: bool,
-}
-
-impl Default for WriteOptions {
-    fn default() -> Self {
-        Self { force: false }
-    }
 }
 
 /// Archivo extraído, con su hash calculado al escribirlo.

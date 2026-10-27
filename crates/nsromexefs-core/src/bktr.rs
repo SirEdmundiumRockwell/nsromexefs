@@ -386,7 +386,7 @@ impl<P: SectionRead, B: SectionRead> BktrSection<P, B> {
             let mut iv = self.ctr_iv;
             iv[4..8].copy_from_slice(&subsec.ctr_val.to_be_bytes());
             iv[8..16].copy_from_slice(&((self.patch.start() + aligned) >> 4).to_be_bytes());
-            let skip = (p - aligned) as u64;
+            let skip = p - aligned;
             self.patch.read_raw_at(p, &mut out[done..done + n])?;
             crypto::ctr_apply_at(&self.patch_key, &iv, skip, &mut out[done..done + n]);
             done += n;

@@ -45,6 +45,14 @@ pub enum Error {
 
     #[error("la base no corresponde al update: el update pertenece a {expected}, pero la base es {actual}")]
     BaseMismatch { expected: String, actual: String },
+
+    #[error("el lote terminó con {failed} error(es) de {total} título(s)")]
+    BatchFailed {
+        failed: usize,
+        total: usize,
+        /// Código de salida agregado (mismo si todos los fallos coinciden).
+        exit: u8,
+    },
 }
 
 impl Error {
@@ -64,6 +72,7 @@ impl Error {
             Error::NameCollision { .. } => "E_NAME_COLLISION",
             Error::MissingBase => "E_BASE_MISSING",
             Error::BaseMismatch { .. } => "E_BASE_MISMATCH",
+            Error::BatchFailed { .. } => "E_BATCH_FAILED",
         }
     }
 
@@ -100,6 +109,9 @@ impl Error {
             Error::BaseMismatch { .. } => Some(
                 "comprueba que el update y la base son del mismo juego y región",
             ),
+            Error::BatchFailed { .. } => {
+                Some("cada título se procesó por separado; revisa las líneas marcadas como error")
+            }
             Error::Unsupported(_) => Some("consulta el alcance soportado en el diseño §2"),
             _ => None,
         }

@@ -34,18 +34,25 @@ pub struct Pfs0Entry {
 impl Pfs0Entry {
     /// Clasificación aproximada por nombre. El tipo real se decide leyendo la NCA.
     pub fn kind(&self) -> EntryKind {
-        let lower = self.name.to_ascii_lowercase();
-        if lower.ends_with(".tik") {
-            EntryKind::Ticket
-        } else if lower.ends_with(".cnmt.nca") {
-            EntryKind::Meta
-        } else if lower.ends_with(".nca") {
-            EntryKind::Content
-        } else if lower.ends_with(".xml") {
-            EntryKind::Xml
-        } else {
-            EntryKind::Other
-        }
+        classify(&self.name)
+    }
+}
+
+/// Clasificación aproximada por nombre. Sirve igual para PFS0 (NSP) y para
+/// las entradas de una partición HFS0 (XCI): en ambos casos las NCA llevan el
+/// id de contenido como nombre.
+pub fn classify(name: &str) -> EntryKind {
+    let lower = name.to_ascii_lowercase();
+    if lower.ends_with(".tik") {
+        EntryKind::Ticket
+    } else if lower.ends_with(".cnmt.nca") {
+        EntryKind::Meta
+    } else if lower.ends_with(".nca") {
+        EntryKind::Content
+    } else if lower.ends_with(".xml") {
+        EntryKind::Xml
+    } else {
+        EntryKind::Other
     }
 }
 

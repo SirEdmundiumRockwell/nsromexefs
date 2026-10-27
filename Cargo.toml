@@ -8,10 +8,10 @@ members = [
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.75"
+rust-version = "1.82"
 license = "MIT"
 authors = ["Sir Edmund Rockwell"]
-repository = "https://github.com/example/nsromexefs"
+repository = "https://github.com/SirEdmundiumRockwell/nsromexefs"
 
 [workspace.dependencies]
 thiserror = "2"

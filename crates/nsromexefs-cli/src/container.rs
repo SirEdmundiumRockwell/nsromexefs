@@ -1,0 +1,485 @@
+//! Apertura de contenedores: NSP (PFS0) y XCI (HFS0).
+//!
+//! Los dos formatos terminan en la misma abstracción: una lista de entradas
+//! con offsets **absolutos** dentro del archivo abierto. A partir de ahí todo
+//! el motor (cabeceras NCA, tickets, CNMT, RomFS) funciona igual.
+
+use std::fs::File;
+use std::io::{Read, Seek, SeekFrom};
+use std::path::Path;
+
+use nsromexefs_core::pfs0::{classify, EntryKind};
+use nsromexefs_core::{
+    content_key, read_meta, BktrSection, ContentInfo, EncryptionType, Error, Hfs0, KeyOrigin,
+    KeySet, MetaInfo, MetaType, NcaHeader, PartitionType, Pfs0, PlainSection, Section, SectionRead,
+    Ticket, Xci,
+};
+
+/// Entrada ya resuelta a offsets absolutos del archivo.
+#[derive(Debug, Clone)]
+pub(crate) struct TableEntry {
+    pub name: String,
+    pub offset: u64,
+    pub size: u64,
+    pub kind: EntryKind,
+}
+
+/// Entradas de un contenedor: el PFS0 de un NSP o el HFS0 de `secure`.
+#[derive(Debug, Clone)]
+pub(crate) struct EntryTable {
+    pub entries: Vec<TableEntry>,
+}
+
+impl EntryTable {
+    fn from_pfs0(pfs0: &Pfs0) -> Self {
+        Self {
+            entries: pfs0
+                .entries
+                .iter()
+                .map(|e| TableEntry {
+                    name: e.name.clone(),
+                    offset: e.offset,
+                    size: e.size,
+                    kind: e.kind(),
+                })
+                .collect(),
+        }
+    }
+
+    pub(crate) fn from_hfs0(hfs0: &Hfs0) -> Self {
+        Self {
+            entries: hfs0
+                .entries
+                .iter()
+                .map(|e| TableEntry {
+                    name: e.name.clone(),
+                    offset: e.offset,
+                    size: e.size,
+                    kind: classify(&e.name),
+                })
+                .collect(),
+        }
+    }
+
+    pub fn meta_entries(&self) -> impl Iterator<Item = &TableEntry> {
+        self.entries.iter().filter(|e| e.kind == EntryKind::Meta)
+    }
+
+    /// Busca `<id>.nca` por el id de contenido del CNMT.
+    pub fn find_nca(&self, id_hex: &str) -> Option<&TableEntry> {
+        let name = format!("{id_hex}.nca");
+        self.entries
+            .iter()
+            .find(|entry| entry.name.eq_ignore_ascii_case(&name))
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ContainerKind {
+    Nsp,
+    Xci,
+}
+
+impl ContainerKind {
+    pub fn label(self) -> &'static str {
+        match self {
+            ContainerKind::Nsp => "NSP (PFS0)",
+            ContainerKind::Xci => "XCI (HFS0)",
+        }
+    }
+}
+
+pub(crate) struct OpenedTable {
+    pub kind: ContainerKind,
+    pub table: EntryTable,
+    pub xci: Option<Xci>,
+}
+
+/// Contenedor abierto y resuelto: lo necesario para planificar y extraer sin
+/// volver a leer cabeceras ni tickets.
+pub(crate) struct Container {
+    pub file: File,
+    pub meta_info: MetaInfo,
+    pub content_key: [u8; 16],
+    pub key_origin: KeyOrigin,
+    pub program_name: String,
+    pub exefs: Option<Section>,
+    pub romfs: Option<Section>,
+    pub display_version: Option<String>,
+}
+
+impl Container {
+    pub fn title_id(&self) -> String {
+        self.meta_info.cnmt.title_id_hex()
+    }
+}
+
+/// Información mínima para agrupar títulos en modo lote (no toca la NCA de
+/// programa ni necesita su titlekey).
+#[derive(Debug, Clone)]
+pub(crate) struct ProbeInfo {
+    pub meta_type: MetaType,
+    pub title_id: String,
+    /// Id de la aplicación a la que pertenece (para DLC y updates).
+    pub app_id: String,
+    pub version: u32,
+}
+
+/// Detecta el tipo de contenedor y extrae su tabla de entradas principal.
+pub(crate) fn open_table(file: &mut File, path: &Path) -> Result<OpenedTable, Error> {
+    let total_size = file.metadata()?.len();
+    if total_size < 4 {
+        return Err(Error::Unsupported(format!(
+            "{}: archivo demasiado pequeño para ser un contenedor",
+            path.display()
+        )));
+    }
+
+    let mut magic = [0u8; 4];
+    file.read_exact(&mut magic)?;
+
+    if &magic == b"PFS0" {
+        file.seek(SeekFrom::Start(0))?;
+        let pfs0 = Pfs0::read(file, total_size)?;
+        return Ok(OpenedTable {
+            kind: ContainerKind::Nsp,
+            table: EntryTable::from_pfs0(&pfs0),
+            xci: None,
+        });
+    }
+
+    if !looks_like_xci(file)? {
+        return Err(Error::Unsupported(format!(
+            "{}: no es un NSP ni un XCI reconocible",
+            path.display()
+        )));
+    }
+
+    let xci = Xci::read(file, total_size)?;
+    let secure = xci.secure().ok_or_else(|| {
+        Error::Invalid(format!(
+            "{}: el XCI no tiene una partición `secure` legible",
+            path.display()
+        ))
+    })?;
+
+    Ok(OpenedTable {
+        kind: ContainerKind::Xci,
+        table: EntryTable::from_hfs0(&secure.hfs0),
+        xci: Some(xci),
+    })
+}
+
+/// Abre un archivo y devuelve el título base y, si el XCI trae una partición
+/// `update`, también su update. Un NSP produce un solo contenedor.
+pub(crate) fn open_containers(path: &Path, keys: &KeySet) -> Result<Vec<Container>, Error> {
+    let mut file = File::open(path)?;
+    let opened = open_table(&mut file, path)?;
+    let OpenedTable { table, xci, .. } = opened;
+
+    let mut containers = vec![resolve_container(file, table, keys, path)?];
+
+    if let Some(xci) = xci {
+        if let Some(update) = xci.partition("update") {
+            let table = EntryTable::from_hfs0(&update.hfs0);
+            // Una partición update vacía o sin CNMT no aporta nada.
+            if table.meta_entries().next().is_some() {
+                let update_file = File::open(path)?;
+                containers.push(resolve_container(update_file, table, keys, path)?);
+            }
+        }
+    }
+
+    Ok(containers)
+}
+
+/// Lee solo el CNMT de cada título presente en el archivo (base y, si existe,
+/// la partición `update` del XCI). Sirve para agrupar en modo lote sin gastar
+/// tiempo en claves de contenido que aún no hacen falta.
+pub(crate) fn probe_titles(path: &Path, keys: &KeySet) -> Result<Vec<ProbeInfo>, Error> {
+    let mut file = File::open(path)?;
+    let opened = open_table(&mut file, path)?;
+    let OpenedTable { table, xci, .. } = opened;
+
+    let mut probes = Vec::new();
+    let (meta_info, _) = read_meta_info(&mut file, &table, keys, path)?;
+    probes.push(ProbeInfo::from_cnmt(&meta_info));
+
+    if let Some(xci) = xci {
+        if let Some(update) = xci.partition("update") {
+            let table = EntryTable::from_hfs0(&update.hfs0);
+            if table.meta_entries().next().is_some() {
+                if let Ok((meta_info, _)) = read_meta_info(&mut file, &table, keys, path) {
+                    probes.push(ProbeInfo::from_cnmt(&meta_info));
+                }
+            }
+        }
+    }
+
+    Ok(probes)
+}
+
+impl ProbeInfo {
+    fn from_cnmt(meta_info: &MetaInfo) -> Self {
+        let cnmt = &meta_info.cnmt;
+        let title_id = cnmt.title_id_hex();
+        let app_id = match cnmt.meta_type {
+            MetaType::Application => title_id.clone(),
+            _ => cnmt
+                .application_id()
+                .map(|id| format!("{id:016X}"))
+                .unwrap_or_else(|| title_id.clone()),
+        };
+        Self {
+            meta_type: cnmt.meta_type,
+            title_id,
+            app_id,
+            version: cnmt.version,
+        }
+    }
+}
+
+/// Resuelve CNMT, NCA de programa, clave de contenido y secciones de
+/// `exefs`/`romfs` sobre una tabla de entradas ya abierta.
+fn resolve_container(
+    mut file: File,
+    table: EntryTable,
+    keys: &KeySet,
+    path: &Path,
+) -> Result<Container, Error> {
+    let (meta_info, tickets) = read_meta_info(&mut file, &table, keys, path)?;
+
+    let program = meta_info
+        .cnmt
+        .contents
+        .iter()
+        .find(|c| c.content_type == 1)
+        .ok_or_else(|| {
+            Error::Invalid(format!(
+                "{}: el CNMT no lista ninguna NCA de programa",
+                path.display()
+            ))
+        })?;
+    let id_hex = program.content_id_hex();
+    let nca_entry = table.find_nca(&id_hex).ok_or_else(|| {
+        Error::Invalid(format!(
+            "{}: la NCA de programa {id_hex} no está en el contenedor",
+            path.display()
+        ))
+    })?;
+
+    let header = NcaHeader::read_at(
+        &mut file,
+        nca_entry.offset,
+        nca_entry.size,
+        keys.header_key().as_ref(),
+    )?;
+    let program_ticket = tickets
+        .list
+        .iter()
+        .find(|t| t.rights_id == header.rights_id);
+    let (content_key, key_origin) = content_key(&header, keys, program_ticket)?;
+
+    let exefs = header
+        .sections
+        .iter()
+        .flatten()
+        .find(|s| s.partition_type == PartitionType::Pfs0)
+        .cloned();
+    let romfs = header
+        .sections
+        .iter()
+        .flatten()
+        .find(|s| s.partition_type == PartitionType::RomFs)
+        .cloned();
+    let display_version = read_display_version(
+        &mut file,
+        &table,
+        &meta_info.cnmt.contents,
+        keys,
+        &tickets.list,
+    );
+
+    Ok(Container {
+        file,
+        meta_info,
+        content_key,
+        key_origin,
+        program_name: nca_entry.name.clone(),
+        exefs,
+        romfs,
+        display_version,
+    })
+}
+
+/// Lee la NCA de metadatos y su CNMT, junto con los tickets del contenedor.
+fn read_meta_info(
+    file: &mut File,
+    table: &EntryTable,
+    keys: &KeySet,
+    path: &Path,
+) -> Result<(MetaInfo, TicketList), Error> {
+    let meta_entry = table.meta_entries().next().ok_or_else(|| {
+        Error::Invalid(format!(
+            "{}: no hay ningún .cnmt.nca: no se puede identificar el título",
+            path.display()
+        ))
+    })?;
+
+    let tickets = read_tickets(file, table);
+    let meta_header = NcaHeader::read_at(
+        file,
+        meta_entry.offset,
+        meta_entry.size,
+        keys.header_key().as_ref(),
+    )?;
+    let meta_ticket = tickets
+        .list
+        .iter()
+        .find(|t| t.rights_id == meta_header.rights_id);
+    let meta_info = read_meta(file, meta_entry.offset, meta_entry.size, keys, meta_ticket)?;
+
+    Ok((meta_info, tickets))
+}
+
+pub(crate) struct TicketList {
+    pub list: Vec<Ticket>,
+    pub err: Option<String>,
+}
+
+/// Los tickets son pequeños y opcionales: en un cartucho no existen, así que
+/// la clave debe venir de `title.keys`.
+pub(crate) fn read_tickets(file: &mut File, table: &EntryTable) -> TicketList {
+    let mut list = Vec::new();
+    for entry in &table.entries {
+        if entry.kind != EntryKind::Ticket || entry.size > 0x10000 {
+            continue;
+        }
+        let mut data = vec![0u8; entry.size as usize];
+        if file.seek(SeekFrom::Start(entry.offset)).is_err() || file.read_exact(&mut data).is_err()
+        {
+            continue;
+        }
+        match Ticket::parse(&data) {
+            Ok(ticket) => list.push(ticket),
+            Err(err) => {
+                return TicketList {
+                    list,
+                    err: Some(format!("ticket {} ilegible: {err}", entry.name)),
+                }
+            }
+        }
+    }
+    TicketList { list, err: None }
+}
+
+/// Lee la versión visible (`DisplayVersion`) de `control.nacp`.
+///
+/// La NCA de control es un RomFS normal; `control.nacp` está en su raíz y la
+/// cadena vive en `0x3060` (16 bytes, terminada en NUL). Devuelve `None` si el
+/// contenido no está en el contenedor, no hay clave o el campo no parece una
+/// versión.
+pub(crate) fn read_display_version(
+    file: &mut File,
+    table: &EntryTable,
+    contents: &[ContentInfo],
+    keys: &KeySet,
+    tickets: &[Ticket],
+) -> Option<String> {
+    let control = contents.iter().find(|c| c.content_type == 3)?;
+    let id_hex = control.content_id_hex();
+    let entry = table.find_nca(&id_hex)?;
+
+    let header =
+        NcaHeader::read_at(file, entry.offset, entry.size, keys.header_key().as_ref()).ok()?;
+    let ticket = tickets.iter().find(|t| t.rights_id == header.rights_id);
+    let (content_key, _) = content_key(&header, keys, ticket).ok()?;
+
+    let section = header
+        .sections
+        .iter()
+        .flatten()
+        .find(|s| s.partition_type == PartitionType::RomFs)?;
+    if section.encryption == EncryptionType::Bktr {
+        // El control de un update no debería ser BKTR; si lo fuera, haría falta
+        // la base para fusionarlo y aquí solo tenemos este contenedor.
+        return None;
+    }
+
+    let nacp = {
+        let mut source = PlainSection::new(file, section, &content_key);
+        nsromexefs_core::romfs_read_file(&mut source, "control.nacp").ok()??
+    };
+    parse_display_version(&nacp)
+}
+
+fn parse_display_version(nacp: &[u8]) -> Option<String> {
+    const DISPLAY_VERSION_OFFSET: usize = 0x3060;
+    let raw = nacp.get(DISPLAY_VERSION_OFFSET..DISPLAY_VERSION_OFFSET + 0x10)?;
+    let end = raw.iter().position(|&b| b == 0).unwrap_or(raw.len());
+    let text = std::str::from_utf8(&raw[..end]).ok()?.trim();
+    if text.is_empty()
+        || !text
+            .chars()
+            .all(|c| c.is_ascii_digit() || c == '.' || c == '-' || c == '_')
+    {
+        return None;
+    }
+    Some(text.to_string())
+}
+
+/// RomFS sin fusionar (base, DLC o un update sin BKTR).
+pub(crate) fn plain_source(container: &mut Container) -> Result<Box<dyn SectionRead + '_>, Error> {
+    let Container {
+        file,
+        romfs,
+        content_key,
+        ..
+    } = container;
+    let section = romfs
+        .as_ref()
+        .ok_or_else(|| Error::Invalid("el contenedor no tiene RomFS".into()))?;
+    Ok(Box::new(PlainSection::new(file, section, content_key)))
+}
+
+/// RomFS virtual del update fusionada con la RomFS de la base.
+pub(crate) fn merged_source<'a>(
+    base: &'a mut Container,
+    update: &'a mut Container,
+) -> Result<Box<dyn SectionRead + 'a>, Error> {
+    let patch = {
+        let Container {
+            file,
+            romfs,
+            content_key,
+            ..
+        } = &mut *update;
+        let section = romfs
+            .as_ref()
+            .ok_or_else(|| Error::Invalid("el update no tiene RomFS".into()))?;
+        PlainSection::new(file, section, content_key)
+    };
+    let origin = {
+        let Container {
+            file,
+            romfs,
+            content_key,
+            ..
+        } = &mut *base;
+        let section = romfs
+            .as_ref()
+            .ok_or_else(|| Error::Invalid("la base no tiene RomFS".into()))?;
+        PlainSection::new(file, section, content_key)
+    };
+    Ok(Box::new(BktrSection::new(patch, origin)?))
+}
+
+pub(crate) fn looks_like_xci(file: &mut File) -> Result<bool, Error> {
+    if file.metadata()?.len() < 0x104 {
+        return Ok(false);
+    }
+    file.seek(SeekFrom::Start(0x100))?;
+    let mut magic = [0u8; 4];
+    file.read_exact(&mut magic)?;
+    Ok(&magic == b"HEAD")
+}
