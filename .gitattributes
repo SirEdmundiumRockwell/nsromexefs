@@ -1,0 +1,13 @@
+# Normaliza los finales de línea en el índice (LF), independientemente del SO.
+* text=auto eol=lf
+
+# Scripts de Windows, si se añaden en el futuro.
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Contenido binario que nunca debe normalizarse.
+*.png binary
+*.ico binary
+*.jpg binary
+*.zip binary

@@ -1,0 +1,19 @@
+[package]
+name = "nsromexefs-cli"
+description = "CLI de nsromexefs: NSP/XCI → exefs/romfs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "nsromexefs"
+path = "src/main.rs"
+
+[dependencies]
+nsromexefs-core = { path = "../nsromexefs-core" }
+clap.workspace = true
+anyhow.workspace = true
+serde_json = "1"

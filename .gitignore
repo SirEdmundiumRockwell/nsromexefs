@@ -1,0 +1,24 @@
+# Compilación
+/target
+**/*.rs.bk
+
+# Extracción: temporales y estado
+*.nrx-tmp
+*.part
+.nsromexefs-journal
+
+# Claves y contenido de juegos: NUNCA se versionan
+prod.keys
+title.keys
+*.keys
+*.nsp
+*.xci
+*.nsz
+*.ncz
+/ROMS Y KEYS PARA TEST/
+
+# Exportaciones de sesión y ruido del sistema
+/herramientas-para-nswitch---recompilaciones-y-roms.json
+Thumbs.db
+desktop.ini
+.DS_Store
