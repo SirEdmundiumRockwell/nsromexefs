@@ -1367,15 +1367,20 @@ ruta final. Cualquier intento de salir (`..`, ruta absoluta, enlace simbólico) 
 
 ### 23.1 Principio
 
-La GUI **no implementa lógica**: habla con `nsromexefs-core` a través de cuatro comandos y recibe
-eventos. Todo lo demás (formato, cripto, fusión, verificación) es el mismo código que la CLI.
+La GUI **no implementa lógica de parsing ni extracción**: su primer corte ejecuta la CLI
+`nsromexefs` como proceso local (`info --json`, `dump --dry-run --json`, `dump --json`) y consume
+sus resultados/eventos de progreso. Así conserva exactamente las validaciones, cripto y fusión de
+la CLI; no requiere una segunda implementación. La evolución prevista es extraer una API de
+aplicación asíncrona compartida con `nsromexefs-core` cuando el núcleo exponga planificación,
+cancelación y progreso como interfaz estable.
 
 | Comando | Devuelve |
 |---|---|
-| `plan(files, options)` | el JSON de `--dry-run`: títulos, versiones, fusiones, conflictos, espacio, ETA |
-| `run(plan)` | stream de `ProgressEvent` limitado a 10 Hz |
-| `cancel()` | cancela dejando estado reanudable |
-| `keys.validate(paths)` | estado del keyset por revisión |
+| `info(files, keys)` | JSON de `nsromexefs info --json` |
+| `plan(files, options)` | JSON de `nsromexefs dump --dry-run --json` |
+| `run(plan)` | ejecuta `dump --json`; reenvía el progreso disponible por stderr |
+| `cancel()` | termina el proceso CLI, dejando los checkpoints para `--resume` |
+| `keys.validate(paths)` | JSON de `nsromexefs keys --check --json` |
 
 ```rust
 struct ProgressEvent {
@@ -1392,7 +1397,9 @@ struct ProgressEvent {
 
 ### 23.2 Stack
 
-**Tauri 2 + Svelte 5 + TypeScript.** Motivos:
+**Tauri 2 + Svelte 5 + TypeScript.** El primer corte de interfaz ofrece selección de NSP/XCI,
+claves, destino, revisión dry-run, extracción/reanudación, resultado y ajustes del ejecutable CLI.
+La lectura de progreso detallada/ETA, lotes e i18n ES/EN están pendientes. Motivos del stack:
 
 - La app vive de tablas, chips de estado, arrastrar y soltar y barras de progreso: donde la web gana.
 - El backend Rust reutiliza el crate del núcleo sin FFI ni reimplementaciones.

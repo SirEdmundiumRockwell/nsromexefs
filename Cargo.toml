@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/nsromexefs-core",
     "crates/nsromexefs-cli",
+    "crates/nsromexefs-gui/src-tauri",
 ]
 
 [workspace.package]
