@@ -209,12 +209,13 @@ juego.nsp
 | M4 — XCI/HFS0, lote, `--tree` | ✅ validado con XCI sintético y lote real (3.842/3.842) |
 | M5 — `verify`, preflight, `--version`, JSON y base+DLC combinado | ✅ validado |
 | M6 — `manifest.json`, `--resume`, JSON y documentación | ✅ validado con extracción real interrumpida |
-| GUI (Tauri 2 + Svelte) | ⏳ v2 (~5-6 días) |
+| GUI (Tauri 2 + Svelte) | 🚧 primer corte en desarrollo en `crates/nsromexefs-gui/` |
 
 ## Documentación
 
 - [**Diseño técnico**](DISENO-nsromexefs.md) — arquitectura, formatos, algoritmos y plan.
 - [Guía de claves](docs/claves.md) — formatos admitidos, validación y manejo seguro.
+- [GUI (desarrollo)](crates/nsromexefs-gui/README.md) — requisitos y cómo ejecutarla localmente.
 - [Licencia](LICENSE) — MIT.
 - [Créditos y licencias de terceros](THIRD-PARTY-NOTICES.md).
 
