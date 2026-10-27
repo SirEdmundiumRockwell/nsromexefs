@@ -123,7 +123,14 @@ pub(crate) fn cmd_batch(
                         inputs.push(update.path.clone());
                     }
                 }
-                run_one(&inputs, &root, &keys, dump_opts, &mut lines);
+                run_one(
+                    &inputs,
+                    &root,
+                    &keys,
+                    dump_opts.clone(),
+                    Some(&base.title_id),
+                    &mut lines,
+                );
             }
             None => {
                 if let Some(update) = update {
@@ -141,7 +148,8 @@ pub(crate) fn cmd_batch(
                 std::slice::from_ref(&dlc.path),
                 &root,
                 &keys,
-                dump_opts,
+                dump_opts.clone(),
+                Some(&dlc.title_id),
                 &mut lines,
             );
         }
@@ -238,9 +246,10 @@ fn run_one(
     root: &Path,
     keys: &KeySet,
     opts: DumpOptions,
+    target: Option<&str>,
     lines: &mut Vec<BatchLine>,
 ) {
-    match dump_paths(inputs, keys, Some(root), opts) {
+    match dump_paths(inputs, keys, Some(root), opts, target) {
         Ok(report) => lines.push(BatchLine::Done(Box::new(report))),
         Err(error) => lines.push(BatchLine::Failed {
             inputs: inputs.to_vec(),
@@ -266,6 +275,7 @@ fn batch_json(
         "root": root.display().to_string(),
         "ok": ok,
         "failed": failed,
+        "code": if failed == 0 { serde_json::Value::Null } else { serde_json::json!("E_BATCH_FAILED") },
         "titles": lines.iter().map(|line| match line {
             BatchLine::Done(report) => serde_json::json!({
                 "status": "ok",

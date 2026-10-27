@@ -13,3 +13,4 @@ thiserror.workspace = true
 aes = "0.8"
 ctr = "0.9"
 sha2 = "0.10"
+fs2 = "0.4"

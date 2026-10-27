@@ -14,13 +14,15 @@ pub mod ivfc;
 pub mod keys;
 pub mod nca;
 pub mod pfs0;
+pub mod preflight;
 pub mod romfs;
 pub mod section;
 pub mod ticket;
+pub mod verify;
 pub mod xci;
 
 pub use bktr::{BktrHeader, BktrSection, BktrTables, RelocEntry, SubsecEntry};
-pub use cnmt::{Cnmt, ContentInfo, MetaType};
+pub use cnmt::{format_version, Cnmt, ContentInfo, MetaType};
 pub use content::{read_meta, MetaInfo};
 pub use error::{Error, Result};
 pub use extract::{
@@ -35,9 +37,11 @@ pub use nca::{
     Section,
 };
 pub use pfs0::{EntryKind, Pfs0, Pfs0Entry};
+pub use preflight::{ensure_output, ensure_space, ensure_within, prepare_output, required_space};
 pub use romfs::{RomFs, RomFsEntry, RomFsHeader};
 pub use section::{PlainSection, SectionRead};
 pub use ticket::Ticket;
+pub use verify::{parse_sha256sums, verify_tree, VerifyEntry, VerifyReport};
 pub use xci::{Xci, XciHeader, XciPartition};
 
 /// Nombre y versión del motor, visibles desde `--about`.

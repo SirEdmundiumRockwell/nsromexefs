@@ -1,6 +1,6 @@
 # nsromexefs — Diseño técnico
 
-> **Estado:** v0.1 · diseño cerrado · M0-M4 implementados y validados (NSP reales y XCI sintético) · M5-M6 pendientes
+> **Estado:** v0.1 · diseño cerrado · M0-M5 implementados y validados (NSP y XCI reales) · M6 pendiente
 > **Versión del documento:** 1.2
 > **Fecha:** 2026-10-27 (rev. de la 1.0 del 2026-10-25)
 > **Autor:** Sir Edmund Rockwell
@@ -564,7 +564,7 @@ salida/
 
 Es lo que espera cualquier proyecto de recompilación: dos carpetas con esos nombres exactos.
 
-En v0.1 (M0-M4) `manifest.json` todavía no se escribe; `SHA256SUMS` sí. El manifest llega
+En v0.1 (M0-M5) `manifest.json` todavía no se escribe; `SHA256SUMS` sí. El manifest llega
 en M6 (§9.3).
 
 ### 9.2 `--tree`: un directorio por título y versión
@@ -645,8 +645,9 @@ nsromexefs keys   --check <archivo.keys>           # valida y sanea un keyset
 | `--strict` | falla ante cualquier discrepancia de hash |
 | `--quiet` / `-v` | silencio / detalle |
 
-En v0.1 (M0-M4) están implementadas `-k`, `-o`, `--tree`, `--exefs-only`, `--romfs-only`,
-`--force`, `--dry-run`, `--json` y `-v`. El resto de la tabla llega en M5-M6.
+En v0.1 (M0-M5) están implementadas `-k`, `-o`, `--tree`, `--version`, `--exefs-only`,
+`--romfs-only`, `--force`, `--dry-run`, `--json` y `-v`. `--only-changed`, `--all-parts`,
+`--layout`, `--jobs` y `--resume` llegan en M6.
 
 `dump` acepta **uno o dos** contenedores: la base y, opcionalmente, su update. El orden es
 indiferente y la clasificación se hace por el CNMT. Un update sin base termina con
@@ -673,6 +674,23 @@ El layout de árbol es siempre obligatorio. Los `.nsz`/`.xcz` se reportan como o
 enlaces simbólicos se ignoran. Un fallo por título no aborta el lote: al final se devuelve
 `E_BATCH_FAILED` con el recuento y un código agregado (el código común si todos los fallos
 coinciden; `1` si son mixtos).
+
+### Opciones de `verify`
+
+```
+nsromexefs verify <DIR> [--strict] [--json]
+```
+
+| Opción | Efecto |
+|---|---|
+| `DIR` | árbol con `exefs/` y `romfs/`; si no tiene `SHA256SUMS`, busca raíces recursivamente |
+| `--strict` | los archivos sobrantes y un `main` sin `NSO0` también hacen fallar |
+| `--json` | informe legible por máquina, con listas completas |
+
+Relee cada archivo listado en `SHA256SUMS`, comprueba su SHA-256, detecta rutas inválidas
+(`..`, absolutas, `\`, `:`), faltantes y sobrantes. No sigue enlaces simbólicos. Termina con
+código `5` si algún árbol falla. En modo recursivo, cada `SHA256SUMS` encontrado es una raíz
+independiente y no se desciende dentro de ella.
 
 ### Opciones globales
 
@@ -717,7 +735,7 @@ Medido en el caso real (Ryzen 5 9600X, NVMe):
 
 Objetivo de `nsromexefs`: una sola pasada, sin intermedios, 5,8 GB en ~30-50 s, memoria < 100 MB.
 Medido en el caso real: 6,26 GB en 12,3 s, ~510 MB/s, muy por encima del objetivo.
-El modelo de concurrencia previsto para M5-M6 está en §20.
+El modelo de concurrencia previsto para M6 está en §20.
 
 ---
 
@@ -741,7 +759,7 @@ El modelo de concurrencia previsto para M5-M6 está en §20.
 | **M2** | exefs + romfs base (CTR) + escritura atómica | 3.836 archivos y `main` de 14.984.660 B idénticos a la referencia | 1,5 d | ✅ |
 | **M3** | BKTR: tablas + CTR-EX + fusión base+update | 3.842 archivos con SHA256 idéntico al árbol de referencia | 1,5 d | ✅ |
 | **M4** | XCI/HFS0, lote (`batch`), `--tree` | `dump` de un `.xci` y de una carpeta completa | 1 d | ✅ |
-| **M5** | Preflight, verificación, errores con código | mensajes de §11/§22 y `verify` OK | 1 d | ⏳ |
+| **M5** | Preflight, verificación, `--version`, errores JSON, base+DLC combinado | mensajes de §11/§22 y `verify` OK | 1 d | ✅ |
 | **M6** | `manifest.json`, `--resume`, `--json`, documentación | procesa una carpeta sin intervención | 1 d | ⏳ |
 
 **M2 validado** (NSP real de *Link's Awakening* v1.0.0, 6,27 GB): 6 archivos en `exefs`
@@ -772,6 +790,24 @@ sintético anterior cubre además el caso de un contenedor sin tickets, que exig
 El caso de lote con solo un update devuelve `E_BASE_MISSING` por título y termina en
 `E_BATCH_FAILED` (código 3).
 
+**M5 validado** (mismo XCI real y árbol de referencia):
+
+- `verify` sobre los 3.842 archivos terminó en ~4 s con **3.842/3.842 OK**. Alterar un byte
+  de un archivo produjo `E_VERIFY_FAILED` y **código 5**; un archivo sobrante solo falló con
+  `--strict`.
+- El preflight rechazó una segunda extracción sin `--force` (`E_OUTPUT_EXISTS`), no falló en
+  `--dry-run` y aceptó `--force`. El espacio se comprueba con datos + 1 % + 64 MiB y está
+  cubierto por pruebas unitarias (no había un volumen pequeño para forzar `E_NO_SPACE`).
+- `--version 1.0.0` extrajo la base sola; `1.1.0`, `2.0.0` y `131072` extrajeron el update;
+  una versión inexistente devolvió `E_VERSION_NOT_FOUND` con la lista disponible.
+- `dump --tree` y `batch` volvieron a producir **3.842/3.842 archivos idénticos** a la
+  referencia en ~12 s, y `verify` recursivo del lote terminó OK.
+- Un archivo combinado base + DLC se extrae con `--tree`, abriendo solo el título pedido y
+  sus parches. No había un contenedor combinado real: el filtro por título y la selección de
+  versión están cubiertos con pruebas unitarias.
+- Los errores con `--json` siguen el contrato `{error:{code,message,hint,context}}` y
+  `dump --json` devuelve `{count,titles:[...]}`.
+
 Total: **~8 días** de implementación del CLI. M3 era el único con riesgo real; el resto es mecánico.
 
 GUI (v2): **~5-6 días** adicionales (§23).
@@ -793,7 +829,7 @@ GUI (v2): **~5-6 días** adicionales (§23).
 3. **Matriz de formatos**: 3-5 juegos con update, 1 DLC, 1 XCI, 1 juego sin update, 1 con sección
    de layout no canónico (el caso de este proyecto).
 4. **Robustez**: entradas truncadas/falsas no deben provocar pánico ni escrituras fuera de ruta
-   (`..`, rutas absolutas, nombres reservados de Windows). Fuzzing en M5.
+   (`..`, rutas absolutas, nombres reservados de Windows). Fuzzing en M6.
 5. **Determinismo**: dos ejecuciones producen el mismo `manifest.json` salvo `timestamp`.
 
 ---
@@ -1197,7 +1233,9 @@ ignora; `--all-parts` la extrae como `logo/` junto a `exefs/` y `romfs/`.
 | Una base | se usa |
 | Varias bases | la de versión más alta ≤ update; si no hay update, la más alta |
 | Un update | se usa |
-| Varios updates | el más alto; los demás se ignoran con un aviso (`--version` llegará en M5) |
+| Varios updates | el más alto; los demás se ignoran con un aviso, salvo que `--version` elija uno |
+| `--version` de la base | se extrae la base sin update |
+| `--version` inexistente | error `E_VERSION_NOT_FOUND` con la lista de versiones disponibles |
 | Update sin base | error 3 (un futuro `--delta` extraerá solo los bloques de parche) |
 | Base con title id que no empareja | error: `patch.application_id` no coincide |
 
@@ -1209,11 +1247,12 @@ La agrupación es por `title_id` del CNMT, no por nombre de archivo:
 - Update: `Patch`, con `patch.application_id` igual al title id de la base.
 - DLC: `AddOnContent`, todos bajo el `application_id` del juego.
 
-Un NSP puede contener varios contenidos (base + DLC a la vez): el motor los detecta y `batch`
-los agrupa por aplicación cuando están en archivos separados. En v0.1 `dump` extrae **un
-título por invocación**; si un mismo archivo combina base y DLC, se rechaza con un error
-explícito en lugar de ignorar uno de los dos. La extracción de varios títulos desde un archivo
-combinado queda para M5.
+Un NSP puede contener varios contenidos (base + DLC a la vez): el motor los detecta, `batch`
+los agrupa por aplicación y `dump` los extrae todos en una sola invocación cuando se usa
+`--tree`. Sin `--tree`, un archivo combinado se rechaza con un error explícito para no
+mezclar dos títulos en la misma carpeta. En el layout de árbol, un DLC (con o sin parche)
+va siempre a `<app_id>/dlc/<dlc_id>/v<versión>`. Al extraer un título solo se abren las NCA
+de ese título y de sus parches: un DLC sin `title.keys` no impide extraer la base.
 
 ---
 
@@ -1250,6 +1289,7 @@ Formato estable en `--json`:
 | `E_NAME_COLLISION` | colisión de nombres en el destino |
 | `E_NO_SPACE` | espacio insuficiente |
 | `E_VERIFY_FAILED` | hash o tamaño no coinciden |
+| `E_VERSION_NOT_FOUND` | `--version` no existe entre la base y los updates disponibles |
 | `E_TICKET_PERSONALIZED` | titlekey cifrado con RSA de consola |
 | `E_CANCELLED` | cancelado por el usuario |
 
@@ -1266,18 +1306,35 @@ Regla: **todo error tiene código, mensaje, pista y contexto**. Sin pista no se 
 
 `nsromexefs verify <DIR>` relee el árbol y comprueba:
 
-- `manifest.json` presente y con `schema` conocido.
-- Cada archivo listado existe, con su tamaño y hash.
+- Cada ruta listada en `SHA256SUMS` existe, es un archivo normal y su SHA-256 coincide.
+- Las rutas del manifiesto no escapan de la raíz (`..`, absolutas, `\`, `:`) y no se siguen
+  enlaces simbólicos.
 - `main` empieza por `NSO0` (si existe).
-- `SHA256SUMS` coincide con el manifest.
+- Los archivos que no lista `SHA256SUMS` se reportan como sobrantes.
+- En modo recursivo, cada `SHA256SUMS` encontrado se verifica como una raíz independiente.
+
+Por defecto, un `main` sin `NSO0` y los sobrantes son avisos; con `--strict` son fallos. El
+`manifest.json` y su comprobación cruzada con `SHA256SUMS` llegan en M6.
 
 ### 22.3 `--strict` frente a `--lenient`
 
-- **Por defecto:** hash maestro obligatorio; tablas de nivel 3 avisos.
-- **`--strict`:** cualquier discrepancia es error (código 5).
+- **Por defecto:** hash maestro obligatorio; tablas de nivel 3 y archivos sobrantes son avisos.
+- **`--strict`:** cualquier discrepancia es error (código 5), incluidos sobrantes y `main` sin `NSO0`.
 - **`--lenient`:** todo son avisos; útil con volcados dañados conocidos.
 
-### 22.4 Prefijo de rutas
+### 22.4 Preflight de escritura
+
+Antes de escribir, `dump` y `batch` comprueban:
+
+- Que el destino no sea un archivo y que, si es un directorio con contenido, se haya pasado
+  `--force` (`E_OUTPUT_EXISTS`).
+- Que el volumen tenga espacio para los datos planificados más un margen del 1 % + 64 MiB
+  (`E_NO_SPACE`, código 7).
+- Que los índices de `exefs`/`romfs` no contengan colisiones (`E_NAME_COLLISION`, código 6).
+- Con `--dry-run` no se crea el destino ni se rechaza por estar ocupado; solo se calcula el
+  espacio necesario.
+
+### 22.5 Prefijo de rutas
 
 Antes de escribir cualquier archivo se comprueba que la ruta canónica del destino es prefijo de la
 ruta final. Cualquier intento de salir (`..`, ruta absoluta, enlace simbólico) aborta con `E_IO`.

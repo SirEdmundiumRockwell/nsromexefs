@@ -11,12 +11,86 @@ pub(crate) fn exit_code(err: &Error) -> u8 {
         | Error::MissingTitlekek { .. }
         | Error::MissingTitlekey { .. }
         | Error::MissingKeyArea { .. }
+        | Error::TicketPersonalized
         | Error::KeysetInvalid { .. } => 2,
         Error::MissingBase | Error::BaseMismatch { .. } => 3,
         Error::Unsupported(_) => 4,
+        Error::VerifyFailed { .. } => 5,
+        Error::NameCollision { .. } => 6,
+        Error::NoSpace { .. } => 7,
         Error::BatchFailed { exit, .. } => *exit,
         _ => 1,
     }
+}
+
+/// Contrato estable de error para `--json` (§22.1 del diseño).
+pub(crate) fn error_json(err: &Error) -> serde_json::Value {
+    let context = match err {
+        Error::NoSpace {
+            path,
+            needed,
+            available,
+        } => serde_json::json!({
+            "path": path.display().to_string(),
+            "needed": needed,
+            "available": available,
+        }),
+        Error::OutputExists { path } => serde_json::json!({
+            "path": path.display().to_string(),
+        }),
+        Error::KeysetInvalid { path, reason } => serde_json::json!({
+            "path": path.display().to_string(),
+            "reason": reason,
+        }),
+        Error::MissingTitlekek { revision, declared } => serde_json::json!({
+            "required_revision": revision,
+            "crypto_type": declared,
+        }),
+        Error::MissingTitlekey { rights_id } => serde_json::json!({
+            "rights_id": rights_id,
+        }),
+        Error::MissingKeyArea { bank, revision } => serde_json::json!({
+            "bank": bank,
+            "revision": revision,
+        }),
+        Error::BaseMismatch { expected, actual } => serde_json::json!({
+            "expected": expected,
+            "actual": actual,
+        }),
+        Error::VerifyFailed { checked, failed } => serde_json::json!({
+            "checked": checked,
+            "failed": failed,
+        }),
+        Error::VersionNotFound {
+            requested,
+            available,
+        } => serde_json::json!({
+            "requested": requested,
+            "available": available,
+        }),
+        Error::NameCollision { path } => serde_json::json!({
+            "path": path,
+        }),
+        Error::BatchFailed {
+            failed,
+            total,
+            exit,
+        } => serde_json::json!({
+            "failed": failed,
+            "total": total,
+            "exit": exit,
+        }),
+        _ => serde_json::Value::Null,
+    };
+
+    serde_json::json!({
+        "error": {
+            "code": err.code(),
+            "message": err.to_string(),
+            "hint": err.hint(),
+            "context": context,
+        }
+    })
 }
 
 /// Une dos listas de rutas sin duplicados, conservando el orden.
@@ -115,6 +189,22 @@ mod tests {
         );
         assert_eq!(exit_code(&Error::Unsupported("x".into())), 4);
         assert_eq!(
+            exit_code(&Error::VerifyFailed {
+                checked: 2,
+                failed: 1
+            }),
+            5
+        );
+        assert_eq!(exit_code(&Error::NameCollision { path: "a".into() }), 6);
+        assert_eq!(
+            exit_code(&Error::NoSpace {
+                path: PathBuf::from("x"),
+                needed: 1,
+                available: 0
+            }),
+            7
+        );
+        assert_eq!(
             exit_code(&Error::BatchFailed {
                 failed: 1,
                 total: 2,
@@ -123,6 +213,25 @@ mod tests {
             3
         );
         assert_eq!(exit_code(&Error::Invalid("x".into())), 1);
+    }
+
+    #[test]
+    fn json_error_has_the_stable_shape() {
+        let error = Error::NoSpace {
+            path: PathBuf::from("C:\\out"),
+            needed: 10,
+            available: 5,
+        };
+        let value = error_json(&error);
+        assert_eq!(value["error"]["code"], "E_NO_SPACE");
+        assert_eq!(value["error"]["context"]["needed"], 10);
+        assert_eq!(value["error"]["context"]["available"], 5);
+        assert_eq!(value["error"]["context"]["path"], "C:\\out");
+        assert!(value["error"]["hint"].is_string());
+
+        let plain = error_json(&Error::Invalid("x".into()));
+        assert_eq!(plain["error"]["code"], "E_LAYOUT_UNEXPECTED");
+        assert!(plain["error"]["context"].is_null());
     }
 
     #[test]

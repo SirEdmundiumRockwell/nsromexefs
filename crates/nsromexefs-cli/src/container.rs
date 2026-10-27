@@ -10,7 +10,7 @@ use std::path::Path;
 
 use nsromexefs_core::pfs0::{classify, EntryKind};
 use nsromexefs_core::{
-    content_key, read_meta, BktrSection, ContentInfo, EncryptionType, Error, Hfs0, KeyOrigin,
+    content_key, read_meta, BktrSection, Cnmt, ContentInfo, EncryptionType, Error, Hfs0, KeyOrigin,
     KeySet, MetaInfo, MetaType, NcaHeader, PartitionType, Pfs0, PlainSection, Section, SectionRead,
     Ticket, Xci,
 };
@@ -173,7 +173,11 @@ pub(crate) fn open_table(file: &mut File, path: &Path) -> Result<OpenedTable, Er
 /// Abre un archivo y devuelve **todos** los títulos que contiene: un NSP puede
 /// traer base + DLC, y un XCI puede traer base + update dentro de `secure` o en
 /// su partición `update`.
-pub(crate) fn open_containers(path: &Path, keys: &KeySet) -> Result<Vec<Container>, Error> {
+pub(crate) fn open_containers(
+    path: &Path,
+    keys: &KeySet,
+    target: Option<&str>,
+) -> Result<Vec<Container>, Error> {
     let mut file = File::open(path)?;
     let opened = open_table(&mut file, path)?;
     let OpenedTable { table, xci, .. } = opened;
@@ -182,10 +186,19 @@ pub(crate) fn open_containers(path: &Path, keys: &KeySet) -> Result<Vec<Containe
         return Err(no_meta_error(path));
     }
 
+    let target_raw = target.and_then(|id| u64::from_str_radix(id, 16).ok());
     let mut containers = Vec::new();
     for meta in table.meta_entries() {
-        let file = File::open(path)?;
-        containers.push(resolve_container(file, meta, &table, keys, path)?);
+        let mut file = File::open(path)?;
+        let (meta_info, tickets) = read_meta_info(&mut file, meta, &table, keys)?;
+        if !wanted_title(&meta_info.cnmt, target, target_raw) {
+            // No se resuelve la NCA de programa de un título que no se va a
+            // extraer: así no se exige su titlekey ni se pierde tiempo.
+            continue;
+        }
+        containers.push(resolve_container(
+            file, meta_info, tickets, &table, keys, path,
+        )?);
     }
 
     if let Some(xci) = xci {
@@ -193,13 +206,41 @@ pub(crate) fn open_containers(path: &Path, keys: &KeySet) -> Result<Vec<Containe
             let update_table = EntryTable::from_hfs0(&update.hfs0);
             // Una partición update vacía o sin CNMT no aporta nada.
             for meta in update_table.meta_entries() {
-                let file = File::open(path)?;
-                containers.push(resolve_container(file, meta, &update_table, keys, path)?);
+                let mut file = File::open(path)?;
+                let (meta_info, tickets) = read_meta_info(&mut file, meta, &update_table, keys)?;
+                if !wanted_title(&meta_info.cnmt, target, target_raw) {
+                    continue;
+                }
+                containers.push(resolve_container(
+                    file,
+                    meta_info,
+                    tickets,
+                    &update_table,
+                    keys,
+                    path,
+                )?);
             }
         }
     }
 
     Ok(containers)
+}
+
+/// El título pedido y sus parches. Un `--tree` con base + DLC abre solo el
+/// título que toca en cada pasada; el update (Patch) acompaña siempre a su base.
+fn wanted_title(cnmt: &Cnmt, target: Option<&str>, target_raw: Option<u64>) -> bool {
+    let Some(target) = target else {
+        return true;
+    };
+    if cnmt.title_id_hex().eq_ignore_ascii_case(target) {
+        return true;
+    }
+    let Some(target_raw) = target_raw else {
+        return false;
+    };
+    cnmt.meta_type == MetaType::Patch
+        && (cnmt.application_id() == Some(target_raw)
+            || cnmt.title_id == target_raw.wrapping_add(0x800))
 }
 
 /// Lee solo el CNMT de cada título presente en el archivo (base, update, DLC y
@@ -275,13 +316,12 @@ impl ProbeInfo {
 /// `exefs`/`romfs` sobre una tabla de entradas ya abierta.
 fn resolve_container(
     mut file: File,
-    meta_entry: &TableEntry,
+    meta_info: MetaInfo,
+    tickets: TicketList,
     table: &EntryTable,
     keys: &KeySet,
     path: &Path,
 ) -> Result<Container, Error> {
-    let (meta_info, tickets) = read_meta_info(&mut file, meta_entry, table, keys)?;
-
     let program = meta_info
         .cnmt
         .contents
@@ -508,4 +548,70 @@ pub(crate) fn looks_like_xci(file: &mut File) -> Result<bool, Error> {
     let mut magic = [0u8; 4];
     file.read_exact(&mut magic)?;
     Ok(&magic == b"HEAD")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn cnmt(title_id: u64, meta_type: MetaType, app: Option<u64>) -> Cnmt {
+        let mut extended = Vec::new();
+        if let Some(app) = app {
+            extended.extend_from_slice(&app.to_le_bytes());
+        }
+        Cnmt {
+            title_id,
+            version: 0,
+            meta_type,
+            attributes: 0,
+            required_download_version: 0,
+            extended,
+            contents: Vec::new(),
+        }
+    }
+
+    const BASE: u64 = 0x0100_6BB0_0C6F_0000;
+    const DLC: u64 = BASE + 0x1000;
+
+    #[test]
+    fn target_filter_opens_only_the_title_and_its_patches() {
+        let target = format!("{BASE:016X}");
+        assert!(wanted_title(
+            &cnmt(BASE, MetaType::Application, None),
+            Some(&target),
+            Some(BASE)
+        ));
+        assert!(wanted_title(
+            &cnmt(BASE + 0x800, MetaType::Patch, Some(BASE)),
+            Some(&target),
+            Some(BASE)
+        ));
+
+        // Un DLC ajeno no se abre al extraer la base.
+        assert!(!wanted_title(
+            &cnmt(DLC, MetaType::AddOnContent, Some(BASE)),
+            Some(&target),
+            Some(BASE)
+        ));
+
+        // El parche de un DLC puede identificarse por aplicación o por title id.
+        let dlc_target = format!("{DLC:016X}");
+        assert!(wanted_title(
+            &cnmt(DLC, MetaType::AddOnContent, Some(BASE)),
+            Some(&dlc_target),
+            Some(DLC)
+        ));
+        assert!(wanted_title(
+            &cnmt(DLC + 0x800, MetaType::Patch, Some(BASE)),
+            Some(&dlc_target),
+            Some(DLC)
+        ));
+
+        // Sin filtro se abre todo.
+        assert!(wanted_title(
+            &cnmt(DLC, MetaType::AddOnContent, Some(BASE)),
+            None,
+            None
+        ));
+    }
 }

@@ -9,6 +9,7 @@ mod container;
 mod dump;
 mod info;
 mod util;
+mod verify;
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -17,7 +18,7 @@ use clap::{Parser, Subcommand};
 use nsromexefs_core::{Error, KeySet};
 
 use crate::dump::DumpOptions;
-use crate::util::{exit_code, merge_paths};
+use crate::util::{error_json, exit_code, merge_paths};
 
 #[derive(Parser)]
 #[command(
@@ -58,6 +59,9 @@ enum Command {
         /// Organiza la salida como <app_id>/v<versión> (obligatorio en lote)
         #[arg(long)]
         tree: bool,
+        /// Fuerza una versión (visible 1.1.0, CNMT 2.0.0 o entero 131072)
+        #[arg(long, value_name = "V")]
+        version: Option<String>,
         /// Extrae solo exefs
         #[arg(long, conflicts_with = "romfs_only")]
         exefs_only: bool,
@@ -104,6 +108,18 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Verifica un árbol extraído contra su SHA256SUMS
+    Verify {
+        /// Árbol con exefs/ y romfs/, o carpeta que contiene varios árboles
+        #[arg(value_name = "DIR")]
+        dir: PathBuf,
+        /// Falla también ante archivos sobrantes o un `main` sin NSO0
+        #[arg(long)]
+        strict: bool,
+        /// Salida legible por máquina
+        #[arg(long)]
+        json: bool,
+    },
     /// Valida y sanea archivos de claves
     Keys {
         /// (Compatibilidad) valida el keyset; es el comportamiento por defecto
@@ -121,44 +137,73 @@ enum Command {
 fn main() -> ExitCode {
     let cli = Cli::parse();
     match run(&cli) {
-        Ok(()) => ExitCode::SUCCESS,
+        Ok(code) => ExitCode::from(code),
         Err(err) => {
-            eprintln!("error [{}]: {err}", err.code());
-            if let Some(hint) = err.hint() {
-                eprintln!("  pista: {hint}");
+            // Un lote ya imprimió su resumen (incluido el JSON): no se duplica.
+            if wants_json(&cli.command) && matches!(err, Error::BatchFailed { .. }) {
+                return ExitCode::from(exit_code(&err));
+            }
+            if wants_json(&cli.command) {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&error_json(&err)).unwrap()
+                );
+            } else {
+                eprintln!("error [{}]: {err}", err.code());
+                if let Some(hint) = err.hint() {
+                    eprintln!("  pista: {hint}");
+                }
             }
             ExitCode::from(exit_code(&err))
         }
     }
 }
 
-fn run(cli: &Cli) -> Result<(), Error> {
+fn wants_json(command: &Command) -> bool {
+    match command {
+        Command::Info { json, .. }
+        | Command::Dump { json, .. }
+        | Command::Batch { json, .. }
+        | Command::Verify { json, .. }
+        | Command::Keys { json, .. } => *json,
+    }
+}
+
+fn run(cli: &Cli) -> Result<u8, Error> {
     match &cli.command {
-        Command::Info { files, json } => info::cmd_info(files, &cli.keys, *json),
+        Command::Info { files, json } => {
+            info::cmd_info(files, &cli.keys, *json)?;
+            Ok(0)
+        }
         Command::Dump {
             files,
             out,
             tree,
+            version,
             exefs_only,
             romfs_only,
             dry_run,
             force,
             verbose,
             json,
-        } => dump::cmd_dump(
-            files,
-            &cli.keys,
-            out.as_deref(),
-            DumpOptions {
-                exefs_only: *exefs_only,
-                romfs_only: *romfs_only,
-                dry_run: *dry_run,
-                force: *force,
-                verbose: *verbose,
-                json: *json,
-                tree: *tree,
-            },
-        ),
+        } => {
+            dump::cmd_dump(
+                files,
+                &cli.keys,
+                out.as_deref(),
+                DumpOptions {
+                    exefs_only: *exefs_only,
+                    romfs_only: *romfs_only,
+                    dry_run: *dry_run,
+                    force: *force,
+                    verbose: *verbose,
+                    json: *json,
+                    tree: *tree,
+                    version: version.clone(),
+                },
+            )?;
+            Ok(0)
+        }
         Command::Batch {
             dir,
             out,
@@ -168,22 +213,30 @@ fn run(cli: &Cli) -> Result<(), Error> {
             force,
             verbose,
             json,
-        } => batch::cmd_batch(
-            dir,
-            out.as_deref(),
-            &cli.keys,
-            DumpOptions {
-                exefs_only: *exefs_only,
-                romfs_only: *romfs_only,
-                dry_run: *dry_run,
-                force: *force,
-                verbose: *verbose,
-                json: *json,
-                // El lote siempre usa layout por título/versión.
-                tree: true,
-            },
-        ),
-        Command::Keys { files, json, .. } => cmd_keys(files, &cli.keys, *json),
+        } => {
+            batch::cmd_batch(
+                dir,
+                out.as_deref(),
+                &cli.keys,
+                DumpOptions {
+                    exefs_only: *exefs_only,
+                    romfs_only: *romfs_only,
+                    dry_run: *dry_run,
+                    force: *force,
+                    verbose: *verbose,
+                    json: *json,
+                    // El lote siempre usa layout por título/versión.
+                    tree: true,
+                    version: None,
+                },
+            )?;
+            Ok(0)
+        }
+        Command::Verify { dir, strict, json } => verify::cmd_verify(dir, *strict, *json),
+        Command::Keys { files, json, .. } => {
+            cmd_keys(files, &cli.keys, *json)?;
+            Ok(0)
+        }
     }
 }
 

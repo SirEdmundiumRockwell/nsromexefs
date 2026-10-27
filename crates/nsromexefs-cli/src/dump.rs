@@ -3,14 +3,14 @@
 use std::path::{Path, PathBuf};
 
 use nsromexefs_core::{
-    exefs_index, extract_exefs, extract_romfs, romfs_index, EncryptionType, Error, ExtractedFile,
-    KeyOrigin, KeySet, MetaType, SectionRead, WriteOptions,
+    exefs_index, extract_exefs, extract_romfs, format_version, prepare_output, romfs_index,
+    EncryptionType, Error, ExtractedFile, KeyOrigin, KeySet, MetaType, SectionRead, WriteOptions,
 };
 
-use crate::container::{merged_source, open_containers, plain_source, Container};
+use crate::container::{merged_source, open_containers, plain_source, probe_titles, Container};
 use crate::util::{human_size, load_keys_lenient, short_id};
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub(crate) struct DumpOptions {
     pub exefs_only: bool,
     pub romfs_only: bool,
@@ -19,6 +19,8 @@ pub(crate) struct DumpOptions {
     pub verbose: bool,
     pub json: bool,
     pub tree: bool,
+    /// Fuerza una versión concreta (visible, del CNMT o entera).
+    pub version: Option<String>,
 }
 
 pub(crate) fn cmd_dump(
@@ -37,16 +39,65 @@ pub(crate) fn cmd_dump(
         return Err(Error::MissingHeaderKey);
     }
 
-    let report = dump_paths(files, &keys, out, opts)?;
+    // Un archivo puede combinar base + DLC. Se detectan todos los títulos y se
+    // extrae cada uno por separado, compartiendo la raíz de salida.
+    let titles = discover_titles(files, &keys)?;
+    if titles.is_empty() {
+        return Err(Error::MissingBase);
+    }
+    if titles.len() > 1 && !opts.tree {
+        return Err(Error::Invalid(format!(
+            "el contenedor combina {} títulos (base y DLC); añade --tree para extraerlos todos",
+            titles.len()
+        )));
+    }
+
+    let mut reports = Vec::new();
+    for (title_id, _) in &titles {
+        reports.push(dump_paths(files, &keys, out, opts.clone(), Some(title_id))?);
+    }
+
     if opts.json {
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&report.to_json()).unwrap()
-        );
+        let payload = serde_json::json!({
+            "count": reports.len(),
+            "titles": reports.iter().map(DumpReport::to_json).collect::<Vec<_>>(),
+        });
+        println!("{}", serde_json::to_string_pretty(&payload).unwrap());
     } else {
-        report.print_human();
+        for (index, report) in reports.iter().enumerate() {
+            if index > 0 {
+                println!();
+            }
+            report.print_human();
+        }
     }
     Ok(())
+}
+
+/// Títulos base/DLC del contenedor, con la base primero. Los updates no se
+/// extraen por sí solos: acompañan a su base.
+fn discover_titles(files: &[PathBuf], keys: &KeySet) -> Result<Vec<(String, MetaType)>, Error> {
+    let mut titles: Vec<(String, MetaType)> = Vec::new();
+    for path in files {
+        for probe in probe_titles(path, keys)? {
+            if !matches!(
+                probe.meta_type,
+                MetaType::Application | MetaType::AddOnContent
+            ) {
+                continue;
+            }
+            if titles.iter().any(|(id, _)| id == &probe.title_id) {
+                continue;
+            }
+            titles.push((probe.title_id, probe.meta_type));
+        }
+    }
+    titles.sort_by(|a, b| {
+        a.1.short_label()
+            .cmp(b.1.short_label())
+            .then_with(|| a.0.cmp(&b.0))
+    });
+    Ok(titles)
 }
 
 #[derive(Debug)]
@@ -194,26 +245,19 @@ pub(crate) fn dump_paths(
     keys: &KeySet,
     out: Option<&Path>,
     opts: DumpOptions,
+    target: Option<&str>,
 ) -> Result<DumpReport, Error> {
-    // Clasificar por CNMT, nunca por el nombre del archivo. Un XCI puede
-    // aportar su base (secure) y su update en una sola pasada.
-    let mut base: Option<Container> = None;
+    // Clasificar por CNMT, nunca por el nombre del archivo. `target` limita la
+    // apertura al título pedido (y a sus parches), de modo que un archivo
+    // combinado base + DLC no exige las claves de los títulos que no se extraen.
+    let mut bases: Vec<Container> = Vec::new();
     let mut updates: Vec<Container> = Vec::new();
     let mut warnings = Vec::new();
 
     for path in files {
-        for container in open_containers(path, keys)? {
+        for container in open_containers(path, keys, target)? {
             match container.meta_info.cnmt.meta_type {
-                MetaType::Application | MetaType::AddOnContent => {
-                    if base.is_some() {
-                        return Err(Error::Invalid(
-                            "hay más de un título base o DLC en los contenedores indicados; \
-                             dump extrae un título por invocación"
-                                .into(),
-                        ));
-                    }
-                    base = Some(container);
-                }
+                MetaType::Application | MetaType::AddOnContent => bases.push(container),
                 MetaType::Patch => updates.push(container),
                 other => {
                     return Err(Error::Unsupported(format!(
@@ -224,25 +268,24 @@ pub(crate) fn dump_paths(
         }
     }
 
-    let mut base = base.ok_or(Error::MissingBase)?;
-    let mut update = select_highest_update(updates, &mut warnings);
-
-    if let Some(up) = &update {
-        match up.meta_info.cnmt.application_id() {
-            Some(app) if app == base.meta_info.cnmt.title_id => {}
-            Some(app) => {
-                return Err(Error::BaseMismatch {
-                    expected: format!("{app:016X}"),
-                    actual: base.title_id(),
-                })
-            }
-            None => {
+    let mut base = match target {
+        Some(id) => bases.into_iter().next().ok_or_else(|| {
+            Error::Invalid(format!(
+                "no se encontró el título {id} en los contenedores indicados"
+            ))
+        })?,
+        None => {
+            if bases.len() > 1 {
                 return Err(Error::Invalid(
-                    "el CNMT del update no declara a qué aplicación pertenece".into(),
-                ))
+                    "el contenedor combina varios títulos (base + DLC); \
+                     usa --tree para extraerlos todos"
+                        .into(),
+                ));
             }
+            bases.into_iter().next().ok_or(Error::MissingBase)?
         }
-    }
+    };
+    let mut update = select_update(updates, &base, opts.version.as_deref(), &mut warnings)?;
 
     let merged = update.is_some();
     let want_exefs = !opts.romfs_only;
@@ -269,25 +312,37 @@ pub(crate) fn dump_paths(
     let base_version_raw = base.meta_info.cnmt.version;
 
     // En un XCI el CNMT del update apunta a la aplicación; para el base, su
-    // propio id ya es el de la aplicación.
-    let app_id = match meta_type {
-        MetaType::AddOnContent => title
+    // propio id ya es el de la aplicación. Un DLC se agrupa bajo el id del
+    // juego aunque lo que se extraiga sea su parche.
+    let app_id = match base.meta_info.cnmt.meta_type {
+        MetaType::AddOnContent => base
             .meta_info
             .cnmt
             .application_id()
             .map(|id| format!("{id:016X}"))
-            .unwrap_or_else(|| title_id.clone()),
+            .unwrap_or_else(|| base.title_id()),
         _ => base_title_id.clone(),
     };
-    let version_label = display_version
+    let version_text = display_version
         .clone()
         .unwrap_or_else(|| version_raw.to_string());
+
+    // El layout de un DLC (con o sin parche) siempre va en `dlc/<dlc_id>`.
+    let (layout_type, layout_title_id) = match base.meta_info.cnmt.meta_type {
+        MetaType::AddOnContent => (MetaType::AddOnContent, base.title_id()),
+        _ => (meta_type, title_id.clone()),
+    };
 
     let out_dir = if opts.tree {
         let root = out
             .map(Path::to_path_buf)
             .unwrap_or_else(|| PathBuf::from("."));
-        root.join(tree_relative(meta_type, &app_id, &title_id, &version_label))
+        root.join(tree_relative(
+            layout_type,
+            &app_id,
+            &layout_title_id,
+            &version_text,
+        ))
     } else {
         out.map(Path::to_path_buf)
             .unwrap_or_else(|| PathBuf::from(&title_id))
@@ -296,28 +351,30 @@ pub(crate) fn dump_paths(
 
     // exefs: del update si lo trae (código parcheado); si no, de la base.
     let exefs_in_update = update.as_ref().is_some_and(|u| u.exefs.is_some());
-    let exefs_container: &mut Container = if exefs_in_update {
-        update.as_mut().unwrap()
-    } else {
-        &mut base
+    let (program_name, key_origin) = {
+        let container = if exefs_in_update {
+            update.as_ref().unwrap()
+        } else {
+            &base
+        };
+        if opts.exefs_only && container.exefs.is_none() {
+            return Err(Error::Invalid(
+                "este contenido no tiene exefs (¿es un DLC?)".into(),
+            ));
+        }
+        (container.program_name.clone(), container.key_origin)
     };
-    if opts.exefs_only && exefs_container.exefs.is_none() {
-        return Err(Error::Invalid(
-            "este contenido no tiene exefs (¿es un DLC?)".into(),
-        ));
-    }
-    let program_name = exefs_container.program_name.clone();
-    let key_origin = exefs_container.key_origin;
 
     // Índices primero: permiten un `--dry-run` real y detectan colisiones antes
-    // de escribir un solo byte.
+    // de escribir un solo byte. La RomFS se planifica antes de extraer exefs
+    // para que el preflight conozca el tamaño total de la salida.
     let exefs_plan = if want_exefs {
         let Container {
             file,
             exefs,
             content_key,
             ..
-        } = &mut *exefs_container;
+        } = exefs_container(&mut base, update.as_mut());
         match exefs.as_ref() {
             Some(section) => {
                 let mut source = nsromexefs_core::PlainSection::new(file, section, content_key);
@@ -333,6 +390,18 @@ pub(crate) fn dump_paths(
         .map(|entries| entries.iter().map(|(_, size)| size).sum())
         .unwrap_or(0);
 
+    // romfs: la RomFS virtual del update (BKTR) se fusiona bloque a bloque con
+    // la RomFS de la base; no se materializa ninguna NCA intermedia.
+    let romfs_plan = if want_romfs {
+        let mut source = open_romfs_source(&mut base, update.as_mut())?;
+        Some(romfs_index(source.as_mut())?)
+    } else {
+        None
+    };
+
+    let total_bytes = exefs_bytes + romfs_plan.as_ref().map_or(0, |index| index.bytes);
+    prepare_output(&out_dir, opts.force, total_bytes, opts.dry_run)?;
+
     let mut exefs_files = Vec::new();
     if !opts.dry_run && exefs_plan.is_some() {
         let Container {
@@ -340,7 +409,7 @@ pub(crate) fn dump_paths(
             exefs,
             content_key,
             ..
-        } = &mut *exefs_container;
+        } = exefs_container(&mut base, update.as_mut());
         let mut source =
             nsromexefs_core::PlainSection::new(file, exefs.as_ref().unwrap(), content_key);
         let mut on_exefs = |path: &str, _size: u64| {
@@ -356,30 +425,6 @@ pub(crate) fn dump_paths(
         )?;
     }
 
-    // romfs: la RomFS virtual del update (BKTR) se fusiona bloque a bloque con
-    // la RomFS de la base; no se materializa ninguna NCA intermedia.
-    let mut romfs_source: Option<Box<dyn SectionRead + '_>> = None;
-    let romfs_plan = if want_romfs {
-        let mut source: Box<dyn SectionRead + '_> = match update.as_mut() {
-            Some(up)
-                if up
-                    .romfs
-                    .as_ref()
-                    .is_some_and(|section| section.encryption == EncryptionType::Bktr) =>
-            {
-                merged_source(&mut base, up)?
-            }
-            Some(up) if up.romfs.is_some() => plain_source(up)?,
-            _ => plain_source(&mut base)?,
-        };
-        let plan = romfs_index(source.as_mut())?;
-        romfs_source = Some(source);
-        Some(plan)
-    } else {
-        None
-    };
-
-    let total_bytes = exefs_bytes + romfs_plan.as_ref().map_or(0, |index| index.bytes);
     let mut written = 0u64;
     let mut next_report = 1u64 << 30;
     let mut on_file = |path: &str, size: u64| {
@@ -399,7 +444,8 @@ pub(crate) fn dump_paths(
 
     let mut romfs_files = Vec::new();
     if !opts.dry_run {
-        if let (Some(index), Some(source)) = (romfs_plan.as_ref(), romfs_source.as_mut()) {
+        if let Some(index) = romfs_plan.as_ref() {
+            let mut source = open_romfs_source(&mut base, update.as_mut())?;
             romfs_files = extract_romfs(
                 source.as_mut(),
                 index,
@@ -444,28 +490,168 @@ pub(crate) fn dump_paths(
     })
 }
 
-/// Si hay varios updates (por ejemplo el de un XCI y un NSP suelto), se usa el
-/// de versión más alta y se avisa de los demás.
-fn select_highest_update(updates: Vec<Container>, warnings: &mut Vec<String>) -> Option<Container> {
+/// Contenedor del que sale `exefs`: el update si trae código parcheado.
+fn exefs_container<'a>(
+    base: &'a mut Container,
+    update: Option<&'a mut Container>,
+) -> &'a mut Container {
+    match update {
+        Some(up) if up.exefs.is_some() => up,
+        _ => base,
+    }
+}
+
+/// Fuente de la RomFS: la del update fusionada con BKTR, la del update si es
+/// plana, o la de la base.
+fn open_romfs_source<'a>(
+    base: &'a mut Container,
+    update: Option<&'a mut Container>,
+) -> Result<Box<dyn SectionRead + 'a>, Error> {
+    match update {
+        Some(up)
+            if up
+                .romfs
+                .as_ref()
+                .is_some_and(|section| section.encryption == EncryptionType::Bktr) =>
+        {
+            merged_source(base, up)
+        }
+        Some(up) if up.romfs.is_some() => plain_source(up),
+        _ => plain_source(base),
+    }
+}
+
+/// Elige el update: el más alto por defecto, o el que pida `--version`.
+///
+/// Acepta la versión visible (`1.1.0`), la del CNMT (`2.0.0`) o el entero
+/// interno (`131072`). Si la versión pedida es la de la base, se extrae la base
+/// sin update. Un update que no pertenece a la base es `E_BASE_MISMATCH`.
+fn select_update(
+    updates: Vec<Container>,
+    base: &Container,
+    requested: Option<&str>,
+    warnings: &mut Vec<String>,
+) -> Result<Option<Container>, Error> {
+    let base_id = base.meta_info.cnmt.title_id;
+    let mut matching: Vec<Container> = Vec::new();
+    let mut mismatched: Option<Container> = None;
+
+    for update in updates {
+        let belongs = update.meta_info.cnmt.application_id() == Some(base_id)
+            || update.meta_info.cnmt.title_id == base_id.wrapping_add(0x800);
+        if belongs {
+            matching.push(update);
+        } else if mismatched.is_none() {
+            mismatched = Some(update);
+        }
+    }
+
+    let available = available_versions(base, &matching);
+
+    if let Some(requested) = requested {
+        let mut selected: Vec<Container> = matching
+            .into_iter()
+            .filter(|update| version_matches(update, requested))
+            .collect();
+        if selected.is_empty() {
+            if version_matches(base, requested) {
+                warnings.push(format!(
+                    "--version {requested}: se extrae la base v{} sin update",
+                    version_label(base)
+                ));
+                return Ok(None);
+            }
+            return Err(Error::VersionNotFound {
+                requested: requested.to_string(),
+                available,
+            });
+        }
+        selected.sort_by_key(|update| update.meta_info.cnmt.version);
+        let best = selected.pop().unwrap();
+        for other in selected {
+            warnings.push(format!(
+                "--version {requested}: se ignora el update v{}",
+                version_label(&other)
+            ));
+        }
+        return Ok(Some(best));
+    }
+
     let mut best: Option<Container> = None;
-    for candidate in updates {
+    for candidate in matching {
         let version = candidate.meta_info.cnmt.version;
         match &best {
             None => best = Some(candidate),
             Some(current) if version > current.meta_info.cnmt.version => {
                 warnings.push(format!(
-                    "varios updates: se usa v{version} en lugar de v{}",
-                    current.meta_info.cnmt.version
+                    "varios updates: se usa v{} en lugar de v{}",
+                    version_label(&candidate),
+                    version_label(current)
                 ));
                 best = Some(candidate);
             }
             Some(current) => warnings.push(format!(
-                "varios updates: se ignora v{version} en favor de v{}",
-                current.meta_info.cnmt.version
+                "varios updates: se ignora v{} en favor de v{}",
+                version_label(&candidate),
+                version_label(current)
             )),
         }
     }
-    best
+
+    if best.is_none() {
+        if let Some(other) = mismatched {
+            let expected = other
+                .meta_info
+                .cnmt
+                .application_id()
+                .map(|id| format!("{id:016X}"))
+                .unwrap_or_else(|| "desconocida".into());
+            return Err(Error::BaseMismatch {
+                expected,
+                actual: base.title_id(),
+            });
+        }
+    }
+    Ok(best)
+}
+
+/// Etiqueta de versión: la visible si existe; si no, la del CNMT.
+fn version_label(container: &Container) -> String {
+    container
+        .display_version
+        .clone()
+        .unwrap_or_else(|| format_version(container.meta_info.cnmt.version))
+}
+
+/// Compara la versión pedida con las tres representaciones admitidas.
+fn version_matches(container: &Container, requested: &str) -> bool {
+    version_matches_parts(
+        container.display_version.as_deref(),
+        container.meta_info.cnmt.version,
+        requested,
+    )
+}
+
+fn version_matches_parts(display: Option<&str>, raw: u32, requested: &str) -> bool {
+    let requested = requested.trim();
+    let bare = requested
+        .strip_prefix('v')
+        .or_else(|| requested.strip_prefix('V'))
+        .unwrap_or(requested);
+    bare == raw.to_string()
+        || bare == format_version(raw)
+        || display.is_some_and(|display| display.eq_ignore_ascii_case(bare))
+}
+
+fn available_versions(base: &Container, updates: &[Container]) -> String {
+    let mut labels = vec![format!("{} (base)", version_label(base))];
+    for update in updates {
+        let label = format!("{} (update)", version_label(update));
+        if !labels.contains(&label) {
+            labels.push(label);
+        }
+    }
+    labels.join(", ")
 }
 
 /// Ruta relativa del layout `--tree` (§9.2 del diseño).
@@ -572,6 +758,25 @@ mod tests {
                 .join("01006BB00C6F1001")
                 .join("v0")
         );
+    }
+
+    #[test]
+    fn version_matches_display_cnmt_and_raw() {
+        let raw = 131_072;
+        for requested in ["1.1.0", "2.0.0", "131072", "v1.1.0", " 1.1.0 "] {
+            assert!(
+                version_matches_parts(Some("1.1.0"), raw, requested),
+                "{requested}"
+            );
+        }
+        for requested in ["1.0.0", "131073", "3.0.0", ""] {
+            assert!(
+                !version_matches_parts(Some("1.1.0"), raw, requested),
+                "{requested}"
+            );
+        }
+        assert!(version_matches_parts(None, 0, "0"));
+        assert!(version_matches_parts(None, 0, "0.0.0"));
     }
 
     #[test]

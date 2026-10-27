@@ -37,6 +37,22 @@ pub enum Error {
     #[error("ya existe {path}; usa --force para sobrescribir")]
     OutputExists { path: PathBuf },
 
+    #[error("espacio insuficiente en {path}: se necesitan {needed} bytes y hay {available}")]
+    NoSpace {
+        path: PathBuf,
+        needed: u64,
+        available: u64,
+    },
+
+    #[error("la verificación falló: {failed} problema(s) en {checked} archivo(s)")]
+    VerifyFailed { checked: usize, failed: usize },
+
+    #[error("no está disponible la versión {requested} (disponibles: {available})")]
+    VersionNotFound {
+        requested: String,
+        available: String,
+    },
+
     #[error("colisión de nombres en el destino: {path}")]
     NameCollision { path: String },
 
@@ -69,6 +85,9 @@ impl Error {
             Error::TicketPersonalized => "E_TICKET_PERSONALIZED",
             Error::KeysetInvalid { .. } => "E_KEYSET_INVALID",
             Error::OutputExists { .. } => "E_OUTPUT_EXISTS",
+            Error::NoSpace { .. } => "E_NO_SPACE",
+            Error::VerifyFailed { .. } => "E_VERIFY_FAILED",
+            Error::VersionNotFound { .. } => "E_VERSION_NOT_FOUND",
             Error::NameCollision { .. } => "E_NAME_COLLISION",
             Error::MissingBase => "E_BASE_MISSING",
             Error::BaseMismatch { .. } => "E_BASE_MISMATCH",
@@ -99,6 +118,15 @@ impl Error {
             }
             Error::OutputExists { .. } => {
                 Some("añade --force si quieres reemplazar la extracción anterior")
+            }
+            Error::NoSpace { .. } => {
+                Some("libera espacio en el volumen de destino o extrae en otro disco")
+            }
+            Error::VerifyFailed { .. } => {
+                Some("vuelve a extraer el título o elimina los archivos dañados")
+            }
+            Error::VersionNotFound { .. } => {
+                Some("usa la versión visible (1.1.0), la del CNMT (2.0.0) o el entero (131072)")
             }
             Error::NameCollision { .. } => Some(
                 "el RomFS trae dos rutas que Windows no distingue; extrae en otro sistema de archivos",
@@ -164,6 +192,31 @@ mod tests {
         assert_eq!(Error::MissingHeaderKey.code(), "E_KEY_HEADER_MISSING");
         assert_eq!(Error::TicketPersonalized.code(), "E_TICKET_PERSONALIZED");
         assert_eq!(Error::MissingBase.code(), "E_BASE_MISSING");
+        assert_eq!(
+            Error::NoSpace {
+                path: PathBuf::from("x"),
+                needed: 1,
+                available: 0
+            }
+            .code(),
+            "E_NO_SPACE"
+        );
+        assert_eq!(
+            Error::VerifyFailed {
+                checked: 2,
+                failed: 1
+            }
+            .code(),
+            "E_VERIFY_FAILED"
+        );
+        assert_eq!(
+            Error::VersionNotFound {
+                requested: "1.2.0".into(),
+                available: "1.1.0".into()
+            }
+            .code(),
+            "E_VERSION_NOT_FOUND"
+        );
         assert_eq!(
             Error::BaseMismatch {
                 expected: "01006BB00C6F0000".into(),
