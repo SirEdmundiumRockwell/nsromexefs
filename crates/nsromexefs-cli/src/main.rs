@@ -8,6 +8,7 @@ mod batch;
 mod container;
 mod dump;
 mod info;
+mod state;
 mod util;
 mod verify;
 
@@ -59,6 +60,9 @@ enum Command {
         /// Organiza la salida como <app_id>/v<versión> (obligatorio en lote)
         #[arg(long)]
         tree: bool,
+        /// Reanuda una extracción incompleta, verificando hash y tamaño de cada archivo
+        #[arg(long, conflicts_with = "dry_run")]
+        resume: bool,
         /// Fuerza una versión (visible 1.1.0, CNMT 2.0.0 o entero 131072)
         #[arg(long, value_name = "V")]
         version: Option<String>,
@@ -101,6 +105,9 @@ enum Command {
         /// Sobrescribe extracciones anteriores
         #[arg(long)]
         force: bool,
+        /// Reanuda las extracciones incompletas del lote
+        #[arg(long, conflicts_with = "dry_run")]
+        resume: bool,
         /// Lista cada archivo extraído
         #[arg(short = 'v', long)]
         verbose: bool,
@@ -179,6 +186,7 @@ fn run(cli: &Cli) -> Result<u8, Error> {
             files,
             out,
             tree,
+            resume,
             version,
             exefs_only,
             romfs_only,
@@ -200,6 +208,7 @@ fn run(cli: &Cli) -> Result<u8, Error> {
                     json: *json,
                     tree: *tree,
                     version: version.clone(),
+                    resume: *resume,
                 },
             )?;
             Ok(0)
@@ -211,6 +220,7 @@ fn run(cli: &Cli) -> Result<u8, Error> {
             romfs_only,
             dry_run,
             force,
+            resume,
             verbose,
             json,
         } => {
@@ -228,6 +238,7 @@ fn run(cli: &Cli) -> Result<u8, Error> {
                     // El lote siempre usa layout por título/versión.
                     tree: true,
                     version: None,
+                    resume: *resume,
                 },
             )?;
             Ok(0)

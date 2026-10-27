@@ -1,6 +1,6 @@
 # nsromexefs — Diseño técnico
 
-> **Estado:** v0.1 · diseño cerrado · M0-M5 implementados y validados (NSP y XCI reales) · M6 pendiente
+> **Estado:** v0.1 · diseño cerrado · M0-M6 implementados y validados (NSP y XCI reales)
 > **Versión del documento:** 1.2
 > **Fecha:** 2026-10-27 (rev. de la 1.0 del 2026-10-25)
 > **Autor:** Sir Edmund Rockwell
@@ -564,8 +564,8 @@ salida/
 
 Es lo que espera cualquier proyecto de recompilación: dos carpetas con esos nombres exactos.
 
-En v0.1 (M0-M5) `manifest.json` todavía no se escribe; `SHA256SUMS` sí. El manifest llega
-en M6 (§9.3).
+En v0.1, cada extracción completa escribe `manifest.json` y `SHA256SUMS` (§9.3). El manifest
+se escribe al final; su presencia indica que el árbol terminó correctamente.
 
 ### 9.2 `--tree`: un directorio por título y versión
 
@@ -595,11 +595,12 @@ salida/
   "sources": ["...v0.nsp", "...v1.1.0.nsp"],
   "merged": true,
   "crypto_revision": 9,
-  "keys_source": "prod.keys",
+  "keys_source": ["prod.keys"],
   "exefs": { "files": 6, "main_sha256": "...", "main_size": 14983439 },
   "romfs": { "files": 3836, "bytes": 6232003903, "changed_files": 1 },
   "sanitized_paths": [],
   "skipped_entries": [],
+  "plan_hash": "sha256 del plan de extracción",
   "timestamp": "2026-10-27T12:00:00Z"
 }
 ```
@@ -608,7 +609,8 @@ salida/
 - `version` es la **versión visible** y sale de `control.nacp` (`0x3060`, 16 bytes), no del
   CNMT. `version_raw` es el entero interno del CNMT (aquí `131072`), útil para comparar y
   ordenar versiones pero no para mostrar.
-- `crypto_revision` es la **revisión de master key** (la del `titlekek`), no el `crypto_type` crudo.
+- `crypto_revision` es la **revisión de master key** de la NCA de programa seleccionada, no el
+  `crypto_type` crudo ni la revisión máxima incluida en `prod.keys`.
 - Nunca contiene claves, ni rutas de claves, ni contenido de archivos.
 
 `SHA256SUMS` en formato estándar (`<hash>  <ruta>`), verificable con `sha256sum -c` o
@@ -645,9 +647,10 @@ nsromexefs keys   --check <archivo.keys>           # valida y sanea un keyset
 | `--strict` | falla ante cualquier discrepancia de hash |
 | `--quiet` / `-v` | silencio / detalle |
 
-En v0.1 (M0-M5) están implementadas `-k`, `-o`, `--tree`, `--version`, `--exefs-only`,
-`--romfs-only`, `--force`, `--dry-run`, `--json` y `-v`. `--only-changed`, `--all-parts`,
-`--layout`, `--jobs` y `--resume` llegan en M6.
+En v0.1 (M0-M6) están implementadas `-k`, `-o`, `--tree`, `--version`, `--exefs-only`,
+`--romfs-only`, `--force`, `--dry-run`, `--json`, `--resume` y `-v`. `--only-changed`,
+`--all-parts`, `--layout` y la paralelización `--jobs` siguen pendientes para una versión
+posterior.
 
 `dump` acepta **uno o dos** contenedores: la base y, opcionalmente, su update. El orden es
 indiferente y la clasificación se hace por el CNMT. Un update sin base termina con
@@ -760,7 +763,7 @@ El modelo de concurrencia previsto para M6 está en §20.
 | **M3** | BKTR: tablas + CTR-EX + fusión base+update | 3.842 archivos con SHA256 idéntico al árbol de referencia | 1,5 d | ✅ |
 | **M4** | XCI/HFS0, lote (`batch`), `--tree` | `dump` de un `.xci` y de una carpeta completa | 1 d | ✅ |
 | **M5** | Preflight, verificación, `--version`, errores JSON, base+DLC combinado | mensajes de §11/§22 y `verify` OK | 1 d | ✅ |
-| **M6** | `manifest.json`, `--resume`, `--json`, documentación | procesa una carpeta sin intervención | 1 d | ⏳ |
+| **M6** | `manifest.json`, `--resume`, JSON y documentación | recupera una extracción interrumpida y verifica el resultado | 1 d | ✅ |
 
 **M2 validado** (NSP real de *Link's Awakening* v1.0.0, 6,27 GB): 6 archivos en `exefs`
 (`main` = 14.984.660 B) y 3.836 en `romfs` (6.232.003.695 B). Frente al árbol 1.1.0 de
@@ -807,6 +810,19 @@ El caso de lote con solo un update devuelve `E_BASE_MISSING` por título y termi
   versión están cubiertos con pruebas unitarias.
 - Los errores con `--json` siguen el contrato `{error:{code,message,hint,context}}` y
   `dump --json` devuelve `{count,titles:[...]}`.
+
+**M6 validado** (XCI real de *Link's Awakening*):
+
+- La extracción completa generó `manifest.json` (schema 1), con versión visible/CNMT,
+  fuentes, revisión real de la NCA de programa, tamaños, hashes y timestamp UTC; no guarda
+  secretos ni rutas de claves.
+- `verify --strict` validó manifest, `SHA256SUMS` y `NSO0`; archivos y manifest pasaron.
+- Se terminó a la fuerza una extracción tras escribir ~1,2 GB. El journal tenía checkpoints
+  por archivo y quedó un `.part`; `dump --resume` lo limpió, reanudó y eliminó el journal al
+  completar. Los 3.842 hashes generados coincidieron con los del árbol de referencia.
+- Reanudar un árbol ya completo a partir de `SHA256SUMS` validó los archivos existentes y lo
+  completó sin reescribir los datos (7,9 s incluyendo la verificación SHA-256).
+- `cargo test --all` pasó (109 pruebas), `clippy` limpio y build release correcto.
 
 Total: **~8 días** de implementación del CLI. M3 era el único con riesgo real; el resto es mecánico.
 
@@ -989,9 +1005,14 @@ ejecución.
 }
 ```
 
-- `--resume` valida que el plan actual coincide (`plan_hash`); si no, pide `--force`.
-- Un archivo dado por completado se verifica por tamaño antes de saltarlo; si no coincide, se
-  reescribe.
+- `--resume` valida que las fuentes y el plan actual coinciden (`source_fingerprint` y
+  `plan_hash`); si no, pide `--force` para empezar de nuevo.
+- Cada archivo se compromete atómicamente y su tamaño + SHA-256 se registra en el journal. Para
+  no reescribir/fsync el journal miles de veces durante una extracción grande, se persiste al
+  primer archivo y después cada 32 archivos o 256 MiB; tras una caída se pueden repetir como
+  máximo 31 archivos desde el último checkpoint.
+- Antes de omitir un archivo, se comprueban tipo de archivo, tamaño y SHA-256; si no coincide,
+  se vuelve a extraer.
 - Al terminar se borra el journal.
 
 ### 19.4 Preflight (antes de escribir)
@@ -1312,9 +1333,10 @@ Regla: **todo error tiene código, mensaje, pista y contexto**. Sin pista no se 
 - `main` empieza por `NSO0` (si existe).
 - Los archivos que no lista `SHA256SUMS` se reportan como sobrantes.
 - En modo recursivo, cada `SHA256SUMS` encontrado se verifica como una raíz independiente.
+- Si existe `manifest.json`, se valida `schema`, conteos y consistencia del hash/tamaño de `main`.
 
-Por defecto, un `main` sin `NSO0` y los sobrantes son avisos; con `--strict` son fallos. El
-`manifest.json` y su comprobación cruzada con `SHA256SUMS` llegan en M6.
+Por defecto, un `main` sin `NSO0` y los sobrantes son avisos; con `--strict` son fallos. Los
+árboles antiguos sin manifest siguen siendo verificables por compatibilidad.
 
 ### 22.3 `--strict` frente a `--lenient`
 

@@ -27,7 +27,7 @@ pub use content::{read_meta, MetaInfo};
 pub use error::{Error, Result};
 pub use extract::{
     exefs_index, extract_exefs, extract_romfs, romfs_index, romfs_read_file, ExtractedFile,
-    RomFsIndex, WriteOptions,
+    ResumeFile, RomFsIndex, WriteOptions,
 };
 pub use hfs0::{Hfs0, Hfs0Entry};
 pub use ivfc::Ivfc;

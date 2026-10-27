@@ -6,7 +6,7 @@
 //! que no sobran archivos. Las rutas del manifiesto nunca pueden salir de la
 //! raíz verificada (`..`, absolutas, unidades de Windows).
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs::{self, File};
 use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
@@ -41,6 +41,8 @@ pub struct VerifyReport {
     pub extra: Vec<String>,
     /// `Some(true)` si `exefs/main` empieza por `NSO0`; `None` si no existe.
     pub main_magic_ok: Option<bool>,
+    /// `Some(true)` cuando hay manifest con schema y conteos válidos.
+    pub manifest_ok: Option<bool>,
 }
 
 impl VerifyReport {
@@ -82,15 +84,50 @@ pub fn verify_tree(root: &Path) -> Result<VerifyReport> {
     })?;
     let entries = parse_sha256sums(&text)?;
 
+    let manifest_path = root.join("manifest.json");
+    let manifest_metadata = fs::symlink_metadata(&manifest_path);
+    let manifest_present = manifest_metadata.is_ok();
+    let manifest = match manifest_metadata {
+        Ok(metadata) if metadata.file_type().is_file() => fs::read(&manifest_path)
+            .ok()
+            .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok()),
+        Ok(_) => None,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => None,
+        Err(_) => None,
+    };
+
     let mut report = VerifyReport {
         root: root.to_path_buf(),
         listed: entries.len(),
         ..VerifyReport::default()
     };
+    if manifest_present {
+        let valid = manifest.as_ref().is_some_and(|value| {
+            let schema_ok = value["schema"].as_u64() == Some(1);
+            let exefs_files = value["exefs"]["files"].as_u64().unwrap_or(0);
+            let romfs_files = value["romfs"]["files"].as_u64().unwrap_or(0);
+            let count_ok = exefs_files.saturating_add(romfs_files) == entries.len() as u64;
+            let main_ok = match value["exefs"]["main_sha256"].as_str() {
+                Some(hash) => entries.iter().any(|entry| {
+                    entry.path.eq_ignore_ascii_case("exefs/main")
+                        && entry.sha256.eq_ignore_ascii_case(hash)
+                }),
+                None => true,
+            };
+            schema_ok && count_ok && main_ok
+        });
+        report.manifest_ok = Some(valid);
+        if !valid {
+            report
+                .invalid
+                .push("manifest.json: formato, schema o conteos inválidos".into());
+        }
+    }
     let expected: HashSet<String> = entries
         .iter()
         .map(|entry| entry.path.to_lowercase())
         .collect();
+    let mut actual_sizes = HashMap::new();
 
     for entry in &entries {
         let Some(relative) = safe_relative(&entry.path) else {
@@ -136,6 +173,7 @@ pub fn verify_tree(root: &Path) -> Result<VerifyReport> {
         match hash_file(&full) {
             Ok((sha256, size)) => {
                 report.bytes = report.bytes.saturating_add(size);
+                actual_sizes.insert(entry.path.to_lowercase(), size);
                 if sha256 == entry.sha256 {
                     report.verified += 1;
                 } else {
@@ -166,6 +204,20 @@ pub fn verify_tree(root: &Path) -> Result<VerifyReport> {
             .is_ok()
             && &magic == b"NSO0";
         report.main_magic_ok = Some(ok);
+    }
+
+    if report.manifest_ok == Some(true) {
+        if let Some(size) = manifest
+            .as_ref()
+            .and_then(|value| value["exefs"]["main_size"].as_u64())
+        {
+            if actual_sizes.get("exefs/main").copied() != Some(size) {
+                report.manifest_ok = Some(false);
+                report
+                    .invalid
+                    .push("manifest.json: el tamaño de exefs/main no coincide".into());
+            }
+        }
     }
 
     Ok(report)
@@ -417,5 +469,49 @@ mod tests {
         assert!(report.issues(true) > report.issues(false));
 
         fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn validates_manifest_schema_counts_and_main_size() {
+        let root = temp_root("manifest");
+        fs::create_dir_all(root.join("exefs")).unwrap();
+        fs::create_dir_all(root.join("romfs")).unwrap();
+        fs::write(root.join("exefs/main"), b"NSO0").unwrap();
+        fs::write(root.join("romfs/a"), b"x").unwrap();
+        let main_hash: [u8; 32] = Sha256::digest(b"NSO0").into();
+        let sums = sums_for(&[("exefs/main", b"NSO0"), ("romfs/a", b"x")]);
+        fs::write(root.join("SHA256SUMS"), sums).unwrap();
+        let manifest = serde_json::json!({
+            "schema": 1,
+            "exefs": {
+                "files": 1,
+                "main_sha256": hex(&main_hash),
+                "main_size": 4,
+            },
+            "romfs": {"files": 1},
+        });
+        fs::write(
+            root.join("manifest.json"),
+            serde_json::to_vec(&manifest).unwrap(),
+        )
+        .unwrap();
+        let report = verify_tree(&root).unwrap();
+        assert_eq!(report.manifest_ok, Some(true));
+        assert!(report.ok(false));
+
+        let bad = serde_json::json!({
+            "schema": 2,
+            "exefs": {"files": 10, "main_sha256": hex(&main_hash), "main_size": 99},
+            "romfs": {"files": 0},
+        });
+        fs::write(
+            root.join("manifest.json"),
+            serde_json::to_vec(&bad).unwrap(),
+        )
+        .unwrap();
+        let report = verify_tree(&root).unwrap();
+        assert_eq!(report.manifest_ok, Some(false));
+        assert!(!report.invalid.is_empty());
+        fs::remove_dir_all(root).unwrap();
     }
 }

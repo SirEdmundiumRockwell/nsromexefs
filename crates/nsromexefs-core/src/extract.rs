@@ -5,7 +5,7 @@
 //! y solo se renombra cuando está completo; así una interrupción no deja
 //! archivos a medias con el nombre definitivo.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs::{self, File};
 use std::io::{Cursor, Write};
 use std::path::{Path, PathBuf};
@@ -27,10 +27,21 @@ const MAX_PFS0_IN_MEMORY: u64 = 512 * 1024 * 1024;
 const MAX_META_TABLE: u64 = 256 * 1024 * 1024;
 const MAX_PATH_LEN: usize = 4096;
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct WriteOptions {
     /// Sobrescribir archivos existentes.
     pub force: bool,
+    /// Reanudar solo archivos cuyo tamaño y hash coinciden con el journal.
+    pub resume: HashMap<String, ResumeFile>,
+    /// Prefijo para distinguir, por ejemplo, `exefs/main` de `romfs/main`.
+    pub resume_prefix: String,
+}
+
+/// Datos de un archivo ya confirmado en el journal.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct ResumeFile {
+    pub size: u64,
+    pub sha256: String,
 }
 
 /// Archivo extraído, con su hash calculado al escribirlo.
@@ -83,7 +94,7 @@ pub fn extract_exefs(
     source: &mut dyn SectionRead,
     out_dir: &Path,
     opts: &WriteOptions,
-    on_file: &mut dyn FnMut(&str, u64),
+    on_file: &mut dyn FnMut(&ExtractedFile) -> Result<()>,
 ) -> Result<Vec<ExtractedFile>> {
     let Pfs0InMemory { pfs, pfs0_data } = read_pfs0(source)?;
     fs::create_dir_all(out_dir)?;
@@ -106,13 +117,13 @@ pub fn extract_exefs(
             )));
         }
 
-        on_file(&entry.name, entry.size);
         let file = write_bytes(
             &out_dir.join(&entry.name),
             &pfs0_data[start..end],
             &entry.name,
             opts,
         )?;
+        on_file(&file)?;
         out.push(file);
     }
 
@@ -279,7 +290,7 @@ pub fn extract_romfs(
     index: &RomFsIndex,
     out_dir: &Path,
     opts: &WriteOptions,
-    on_file: &mut dyn FnMut(&str, u64),
+    on_file: &mut dyn FnMut(&ExtractedFile) -> Result<()>,
 ) -> Result<Vec<ExtractedFile>> {
     let fs_offset = Ivfc::parse(source.hash_info())?.fs_offset();
 
@@ -295,7 +306,6 @@ pub fn extract_romfs(
             fs::create_dir_all(parent)?;
         }
 
-        on_file(&entry.path, entry.size);
         let file = write_section_range(
             source,
             fs_offset + entry.offset,
@@ -305,6 +315,7 @@ pub fn extract_romfs(
             opts,
             &mut buffer,
         )?;
+        on_file(&file)?;
         out.push(file);
     }
 
@@ -353,6 +364,9 @@ fn write_bytes(
     label: &str,
     opts: &WriteOptions,
 ) -> Result<ExtractedFile> {
+    if let Some(file) = resume_file(path, label, opts)? {
+        return Ok(file);
+    }
     let mut writer = AtomicWriter::create(path, opts.force)?;
     writer.write(bytes)?;
     writer.commit(relative_name(label), bytes.len() as u64)
@@ -367,6 +381,9 @@ fn write_section_range(
     opts: &WriteOptions,
     buffer: &mut [u8],
 ) -> Result<ExtractedFile> {
+    if let Some(file) = resume_file(path, label, opts)? {
+        return Ok(file);
+    }
     let mut writer = AtomicWriter::create(path, opts.force)?;
     let mut done = 0u64;
     while done < size {
@@ -376,6 +393,65 @@ fn write_section_range(
         done += n as u64;
     }
     writer.commit(relative_name(label), size)
+}
+
+/// Verifica un archivo del journal antes de omitir la escritura. Si no coincide
+/// se reescribe desde el contenedor, nunca se confía ciegamente en el journal.
+fn resume_file(path: &Path, label: &str, opts: &WriteOptions) -> Result<Option<ExtractedFile>> {
+    let key = format!("{}{}", opts.resume_prefix, relative_name(label));
+    let Some(expected) = opts.resume.get(&key) else {
+        return Ok(None);
+    };
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_file() => metadata,
+        _ => return Ok(None),
+    };
+    if metadata.len() != expected.size {
+        return Ok(None);
+    }
+    let (sha256, size) = hash_existing(path)?;
+    if size != expected.size || sha256 != expected.sha256 {
+        return Ok(None);
+    }
+    let digest = decode_sha256(&sha256)
+        .ok_or_else(|| Error::Invalid(format!("hash inválido en el journal para '{key}'")))?;
+    Ok(Some(ExtractedFile {
+        path: relative_name(label),
+        size,
+        sha256: digest,
+    }))
+}
+
+fn hash_existing(path: &Path) -> Result<(String, u64)> {
+    use std::io::Read;
+    let mut file = File::open(path)?;
+    let mut hasher = Sha256::new();
+    let mut buffer = vec![0u8; COPY_CHUNK];
+    let mut size = 0u64;
+    loop {
+        let count = file.read(&mut buffer)?;
+        if count == 0 {
+            break;
+        }
+        hasher.update(&buffer[..count]);
+        size += count as u64;
+    }
+    let hash: [u8; 32] = hasher.finalize().into();
+    Ok((
+        hash.iter().map(|byte| format!("{byte:02x}")).collect(),
+        size,
+    ))
+}
+
+fn decode_sha256(value: &str) -> Option<[u8; 32]> {
+    if value.len() != 64 || !value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return None;
+    }
+    let mut digest = [0u8; 32];
+    for (index, byte) in digest.iter_mut().enumerate() {
+        *byte = u8::from_str_radix(&value[index * 2..index * 2 + 2], 16).ok()?;
+    }
+    Some(digest)
 }
 
 fn relative_name(label: &str) -> String {
@@ -597,5 +673,42 @@ mod tests {
         let mut guard = PathGuard::default();
         guard.register("a").unwrap();
         assert!(guard.register("a/b").is_err());
+    }
+
+    #[test]
+    fn resume_skips_only_matching_size_and_hash() {
+        let root = std::env::temp_dir().join(format!(
+            "nsromexefs-resume-core-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        let path = root.join("main");
+        fs::write(&path, b"NSO0").unwrap();
+        let digest: [u8; 32] = Sha256::digest(b"NSO0").into();
+        let hash: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
+        let mut resume = HashMap::new();
+        resume.insert(
+            "exefs/main".into(),
+            ResumeFile {
+                size: 4,
+                sha256: hash,
+            },
+        );
+        let options = WriteOptions {
+            force: true,
+            resume,
+            resume_prefix: "exefs/".into(),
+        };
+        let resumed = resume_file(&path, "main", &options).unwrap().unwrap();
+        assert_eq!(resumed.size, 4);
+        assert_eq!(resumed.sha256_hex(), options.resume["exefs/main"].sha256);
+
+        fs::write(&path, b"NOPE").unwrap();
+        assert!(resume_file(&path, "main", &options).unwrap().is_none());
+        fs::remove_dir_all(root).unwrap();
     }
 }

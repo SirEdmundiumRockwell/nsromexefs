@@ -4,10 +4,12 @@ use std::path::{Path, PathBuf};
 
 use nsromexefs_core::{
     exefs_index, extract_exefs, extract_romfs, format_version, prepare_output, romfs_index,
-    EncryptionType, Error, ExtractedFile, KeyOrigin, KeySet, MetaType, SectionRead, WriteOptions,
+    EncryptionType, Error, ExtractedFile, KeyOrigin, KeySet, MetaType, ResumeFile, SectionRead,
+    WriteOptions,
 };
 
 use crate::container::{merged_source, open_containers, plain_source, probe_titles, Container};
+use crate::state::{atomic_json, plan_hash, source_fingerprint, timestamp_utc, OutputSession};
 use crate::util::{human_size, load_keys_lenient, short_id};
 
 #[derive(Debug, Clone)]
@@ -21,6 +23,8 @@ pub(crate) struct DumpOptions {
     pub tree: bool,
     /// Fuerza una versión concreta (visible, del CNMT o entera).
     pub version: Option<String>,
+    /// Reanuda una extracción desde el journal por archivo.
+    pub resume: bool,
 }
 
 pub(crate) fn cmd_dump(
@@ -123,6 +127,7 @@ pub(crate) struct DumpReport {
     pub meta_type: MetaType,
     pub program_name: String,
     pub key_origin: KeyOrigin,
+    pub crypto_revision: u8,
     pub version_raw: u32,
     pub display_version: Option<String>,
     pub base_version_raw: u32,
@@ -133,6 +138,7 @@ pub(crate) struct DumpReport {
     pub romfs: Option<RomfsReport>,
     pub checksums: Option<usize>,
     pub warnings: Vec<String>,
+    pub elapsed_ms: u128,
 }
 
 impl DumpReport {
@@ -150,6 +156,7 @@ impl DumpReport {
             "base_display_version": &self.base_display_version,
             "program": self.program_name,
             "key_origin": self.key_origin.label(),
+            "crypto_revision": self.crypto_revision,
             "output": self.out_dir.display().to_string(),
             "dry_run": self.dry_run,
             "exefs": self.exefs.as_ref().map(|exefs| serde_json::json!({
@@ -167,6 +174,9 @@ impl DumpReport {
                 "fs_size": romfs.fs_size,
             })),
             "checksums": self.checksums,
+            "manifest": (!self.dry_run)
+                .then(|| self.out_dir.join("manifest.json").display().to_string()),
+            "timings": {"total_ms": self.elapsed_ms},
             "warnings": self.warnings,
         })
     }
@@ -231,6 +241,9 @@ impl DumpReport {
             if let Some(count) = self.checksums {
                 println!("  SHA256SUMS {count} entradas");
             }
+            if self.elapsed_ms > 0 {
+                println!("  duración   {} ms", self.elapsed_ms);
+            }
         }
         for warning in &self.warnings {
             println!("  aviso      {warning}");
@@ -247,6 +260,7 @@ pub(crate) fn dump_paths(
     opts: DumpOptions,
     target: Option<&str>,
 ) -> Result<DumpReport, Error> {
+    let started = std::time::Instant::now();
     // Clasificar por CNMT, nunca por el nombre del archivo. `target` limita la
     // apertura al título pedido (y a sus parches), de modo que un archivo
     // combinado base + DLC no exige las claves de los títulos que no se extraen.
@@ -347,11 +361,10 @@ pub(crate) fn dump_paths(
         out.map(Path::to_path_buf)
             .unwrap_or_else(|| PathBuf::from(&title_id))
     };
-    let write_opts = WriteOptions { force: opts.force };
 
     // exefs: del update si lo trae (código parcheado); si no, de la base.
     let exefs_in_update = update.as_ref().is_some_and(|u| u.exefs.is_some());
-    let (program_name, key_origin) = {
+    let (program_name, key_origin, crypto_revision) = {
         let container = if exefs_in_update {
             update.as_ref().unwrap()
         } else {
@@ -362,7 +375,11 @@ pub(crate) fn dump_paths(
                 "este contenido no tiene exefs (¿es un DLC?)".into(),
             ));
         }
-        (container.program_name.clone(), container.key_origin)
+        (
+            container.program_name.clone(),
+            container.key_origin,
+            container.crypto_revision,
+        )
     };
 
     // Índices primero: permiten un `--dry-run` real y detectan colisiones antes
@@ -400,7 +417,42 @@ pub(crate) fn dump_paths(
     };
 
     let total_bytes = exefs_bytes + romfs_plan.as_ref().map_or(0, |index| index.bytes);
-    prepare_output(&out_dir, opts.force, total_bytes, opts.dry_run)?;
+    prepare_output(
+        &out_dir,
+        opts.force || opts.resume,
+        total_bytes,
+        opts.dry_run,
+    )?;
+
+    let fingerprint = source_fingerprint(files)?;
+    let identity = serde_json::json!({
+        "sources": fingerprint,
+        "title_id": title_id,
+        "base_title_id": base_title_id,
+        "version_raw": version_raw,
+        "meta_type": meta_type.short_label(),
+        "merged": merged,
+        "exefs_only": opts.exefs_only,
+        "romfs_only": opts.romfs_only,
+        "exefs": exefs_plan.as_ref().map(|entries| entries.iter().map(|(path, size)| (path, size)).collect::<Vec<_>>()),
+        "romfs": romfs_plan.as_ref().map(|index| index.files.iter().map(|entry| (&entry.path, entry.size)).collect::<Vec<_>>()),
+    });
+    let current_plan_hash = plan_hash(&identity);
+    let mut session = if opts.dry_run {
+        None
+    } else {
+        Some(OutputSession::begin(
+            &out_dir,
+            opts.resume,
+            opts.force,
+            fingerprint,
+            current_plan_hash.clone(),
+        )?)
+    };
+    let resume_files: std::collections::BTreeMap<String, ResumeFile> = session
+        .as_ref()
+        .map(OutputSession::resume_files)
+        .unwrap_or_default();
 
     let mut exefs_files = Vec::new();
     if !opts.dry_run && exefs_plan.is_some() {
@@ -412,26 +464,39 @@ pub(crate) fn dump_paths(
         } = exefs_container(&mut base, update.as_mut());
         let mut source =
             nsromexefs_core::PlainSection::new(file, exefs.as_ref().unwrap(), content_key);
-        let mut on_exefs = |path: &str, _size: u64| {
+        let exefs_options = WriteOptions {
+            force: opts.force || opts.resume,
+            resume: resume_files.clone().into_iter().collect(),
+            resume_prefix: "exefs/".into(),
+        };
+        let mut on_exefs = |file: &ExtractedFile| {
             if opts.verbose {
-                println!("    {path}");
+                println!("    exefs/{}", file.path);
             }
+            if let Some(session) = session.as_mut() {
+                session.checkpoint(
+                    &format!("exefs/{}", file.path),
+                    file.size,
+                    &file.sha256_hex(),
+                )?;
+            }
+            Ok(())
         };
         exefs_files = extract_exefs(
             &mut source,
             &out_dir.join("exefs"),
-            &write_opts,
+            &exefs_options,
             &mut on_exefs,
         )?;
     }
 
     let mut written = 0u64;
     let mut next_report = 1u64 << 30;
-    let mut on_file = |path: &str, size: u64| {
+    let mut on_file = |file: &ExtractedFile| {
         if opts.verbose {
-            println!("    {path}");
+            println!("    romfs/{}", file.path);
         }
-        written += size;
+        written += file.size;
         if written >= next_report {
             eprintln!(
                 "    … {} de {}",
@@ -440,17 +505,30 @@ pub(crate) fn dump_paths(
             );
             next_report = written + (1 << 30);
         }
+        if let Some(session) = session.as_mut() {
+            session.checkpoint(
+                &format!("romfs/{}", file.path),
+                file.size,
+                &file.sha256_hex(),
+            )?;
+        }
+        Ok(())
     };
 
     let mut romfs_files = Vec::new();
     if !opts.dry_run {
         if let Some(index) = romfs_plan.as_ref() {
             let mut source = open_romfs_source(&mut base, update.as_mut())?;
+            let romfs_options = WriteOptions {
+                force: opts.force || opts.resume,
+                resume: resume_files.clone().into_iter().collect(),
+                resume_prefix: "romfs/".into(),
+            };
             romfs_files = extract_romfs(
                 source.as_mut(),
                 index,
                 &out_dir.join("romfs"),
-                &write_opts,
+                &romfs_options,
                 &mut on_file,
             )?;
         }
@@ -459,6 +537,26 @@ pub(crate) fn dump_paths(
     let checksums = !opts.dry_run && (!exefs_files.is_empty() || !romfs_files.is_empty());
     if checksums {
         write_sha256sums(&out_dir, &exefs_files, &romfs_files)?;
+        let manifest = build_manifest(
+            files,
+            keys,
+            &title_id,
+            &base_title_id,
+            &version_text,
+            version_raw,
+            meta_type,
+            merged,
+            &program_name,
+            crypto_revision,
+            exefs_plan.is_some(),
+            &exefs_files,
+            romfs_plan.as_ref(),
+            &current_plan_hash,
+        );
+        atomic_json(&out_dir.join("manifest.json"), &manifest)?;
+    }
+    if let Some(session) = session.take() {
+        session.finish()?;
     }
 
     Ok(DumpReport {
@@ -469,6 +567,7 @@ pub(crate) fn dump_paths(
         meta_type,
         program_name,
         key_origin,
+        crypto_revision,
         version_raw,
         display_version,
         base_version_raw,
@@ -487,6 +586,7 @@ pub(crate) fn dump_paths(
         }),
         checksums: checksums.then_some(exefs_files.len() + romfs_files.len()),
         warnings,
+        elapsed_ms: started.elapsed().as_millis(),
     })
 }
 
@@ -716,6 +816,62 @@ fn write_sha256sums(
     }
     std::fs::write(out_dir.join("SHA256SUMS"), text)?;
     Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_manifest(
+    files: &[PathBuf],
+    keys: &KeySet,
+    title_id: &str,
+    base_title_id: &str,
+    version: &str,
+    version_raw: u32,
+    meta_type: MetaType,
+    merged: bool,
+    program_name: &str,
+    crypto_revision: u8,
+    include_exefs: bool,
+    exefs_files: &[ExtractedFile],
+    romfs: Option<&nsromexefs_core::RomFsIndex>,
+    plan_hash: &str,
+) -> serde_json::Value {
+    let main = exefs_files.iter().find(|file| file.path == "main");
+    let key_sources: Vec<String> = keys
+        .sources()
+        .iter()
+        .filter_map(|path| {
+            path.file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+        })
+        .collect();
+    serde_json::json!({
+        "schema": 1,
+        "title_id": title_id,
+        "base_title_id": base_title_id,
+        "meta_type": meta_type.label(),
+        "version": version,
+        "version_raw": version_raw,
+        "sources": files.iter().map(|path| path.display().to_string()).collect::<Vec<_>>(),
+        "merged": merged,
+        "crypto_revision": crypto_revision,
+        "keys_source": key_sources,
+        "program": program_name,
+        "exefs": include_exefs.then(|| serde_json::json!({
+            "files": exefs_files.len(),
+            "main_sha256": main.map(ExtractedFile::sha256_hex),
+            "main_size": main.map(|file| file.size),
+        })),
+        "romfs": romfs.map(|index| serde_json::json!({
+            "files": index.file_count(),
+            "bytes": index.bytes,
+            "directories": index.dirs,
+            "changed_files": serde_json::Value::Null,
+        })),
+        "sanitized_paths": [],
+        "skipped_entries": [],
+        "plan_hash": plan_hash,
+        "timestamp": timestamp_utc(),
+    })
 }
 
 #[cfg(test)]

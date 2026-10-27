@@ -73,6 +73,7 @@ fn report_json(report: &VerifyReport, strict: bool) -> serde_json::Value {
         "invalid": report.invalid,
         "extra": report.extra,
         "main_nso0": report.main_magic_ok,
+        "manifest_ok": report.manifest_ok,
     })
 }
 
@@ -95,6 +96,12 @@ fn print_report(report: &VerifyReport, strict: bool) {
             println!("  main       no empieza por NSO0{suffix}");
         }
         None => println!("  main       no existe"),
+    }
+    if let Some(ok) = report.manifest_ok {
+        println!(
+            "  manifest   {}",
+            if ok { "schema 1 OK" } else { "inválido" }
+        );
     }
 
     print_list("faltan", &report.missing);

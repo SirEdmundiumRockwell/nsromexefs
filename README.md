@@ -4,11 +4,11 @@ Herramienta de línea de comandos que extrae **`exefs`** y **`romfs`** desde con
 **NSP** y **XCI** de Nintendo Switch — base, update y DLC — y fusiona los parches diferenciales
 (BKTR) en un solo paso.
 
-> **Estado:** v0.1 · **M0–M5 completados y validados.**
+> **Estado:** v0.1 · **M0–M6 completados y validados.**
 > `info`, `keys`, `dump` y `batch` funcionan con **NSP y XCI**, base, DLC y updates,
 > incluida la fusión BKTR base+update en un solo paso con **3.842/3.842 archivos idénticos
-> byte a byte** al árbol de referencia. `verify`, preflight, `--version`, errores JSON y títulos
-> combinados están incluidos. `manifest.json` todavía no se escribe (M6).
+> byte a byte** al árbol de referencia. Incluye `verify`, preflight, `--version`, errores JSON,
+> `manifest.json` y reanudación validada por hashes con `--resume`.
 
 ---
 
@@ -23,7 +23,7 @@ salida/
   exefs/          main, main.npdm, rtld, sdk, subsdk0, ...
   romfs/          árbol completo (base + update fusionados)
   SHA256SUMS
-  manifest.json   (M6 — todavía no se escribe)
+  manifest.json
 ```
 
 - Lee **NSP** (PFS0) y **XCI** (HFS0, incluida su partición `update` interna).
@@ -36,6 +36,8 @@ salida/
 - `--version` acepta versión visible, versión CNMT o entero interno. `--tree` extrae todos los
   títulos base/DLC de un contenedor combinado a carpetas separadas.
 - Preflight: destino y espacio libre (datos + 1 % + 64 MiB) antes de empezar a escribir.
+- `manifest.json` registra metadatos sin incluir secretos; `--resume` valida el plan, tamaño y
+  SHA-256 de cada archivo antes de omitirlo. `verify` valida también el manifest cuando existe.
 
 ## Qué funciona hoy
 
@@ -140,6 +142,7 @@ el caso de un cartucho recortado sin tickets, que exige `title.keys`.
 ```console
 nsromexefs verify salida --strict
 nsromexefs dump juego.xci --tree --version 1.0.0 -o salida -k prod.keys
+nsromexefs dump juego.xci --tree -o salida --resume -k prod.keys
 ```
 
 `verify` comprueba cada SHA-256 de `SHA256SUMS`, informa archivos faltantes, dañados, inválidos
@@ -154,6 +157,13 @@ existente. En el XCI real, `--version 1.0.0` eligió la base, mientras que `1.1.
 `131072` eligieron el update. Una versión no disponible devuelve `E_VERSION_NOT_FOUND`.
 Los contenedores combinados base + DLC requieren `--tree`; cada título se procesa aislado y
 se escribe en su propia ruta, sin exigir las claves de los otros títulos.
+
+Cada extracción completa escribe `manifest.json` con schema 1, fuentes, título/versión,
+revisión criptográfica usada y resúmenes de archivos; no contiene claves. `--resume` solo
+omite archivos cuyo tamaño y SHA-256 coinciden con el journal, y rechaza cambios de fuentes o
+plan (usa `--force` para iniciar de cero). Los checkpoints se guardan cada 32 archivos o 256 MiB.
+Se probó interrumpiendo una extracción XCI real y reanudándola: `verify --strict` pasó y los
+3.842 hashes coincidieron con la referencia.
 
 **Inspección sin extraer:**
 
@@ -198,7 +208,7 @@ juego.nsp
 | M3 — fusión de parches BKTR | ✅ validado: 3.842/3.842 idénticos, 0 distintos |
 | M4 — XCI/HFS0, lote, `--tree` | ✅ validado con XCI sintético y lote real (3.842/3.842) |
 | M5 — `verify`, preflight, `--version`, JSON y base+DLC combinado | ✅ validado |
-| M6 — `manifest.json`, `--resume` | ⏳ pendiente |
+| M6 — `manifest.json`, `--resume`, JSON y documentación | ✅ validado con extracción real interrumpida |
 | GUI (Tauri 2 + Svelte) | ⏳ v2 (~5-6 días) |
 
 ## Documentación
