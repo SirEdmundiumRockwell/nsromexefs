@@ -65,3 +65,17 @@ body[data-theme="midnight"] .key-result{color:#9fd8b0}
 body[data-theme="midnight"] .plan-status{background:#2b2a3a;color:#d6c9a0}
 body[data-theme="midnight"] .plan-status.ready{background:var(--theme-soft);color:#c3b0ff}
 body[data-theme="midnight"] .checkmark{background:var(--theme-soft);color:var(--theme-accent)}
+
+/* Application logo (raster source: assets/logo.png, web copy: public/logo.png). */
+.brand-mark.small-mark{width:32px;height:32px}
+.brand-mark img{display:block;width:100%;height:100%;object-fit:cover;border-radius:10px;box-shadow:0 0 0 1px rgba(255,255,255,.14)}
+.small-mark img{border-radius:7px}
+
+/* Engine status in Settings. */
+.engine-hint{display:flex;align-items:center;gap:8px}
+.engine-hint .status-pip{flex:none}
+.engine-hint.missing{background:#fcf1ef;border:1px solid #f0d8d4;color:#a64e42}
+body[data-theme] .engine-hint.missing{background:var(--theme-soft);border-color:var(--theme-line);color:var(--theme-accent)}
+.reset-engine{padding:8px 0 0;text-decoration:underline}
+.rail-bottom .online-dot{background:#d6a750}
+.rail-bottom .online-dot.ok{background:#78bd86}

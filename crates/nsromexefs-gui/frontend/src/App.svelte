@@ -7,6 +7,7 @@ import { invoke, isTauri } from '@tauri-apps/api/core';
 
   type Json = Record<string, any>;
   type Phase = 'ready' | 'reviewing' | 'planned' | 'running' | 'done' | 'error';
+  type EngineInfo = { path: string; version: string | null; bundled: boolean; overridden: boolean };
 
   let language = $state<'en' | 'es'>(localStorage.getItem('language') === 'es' ? 'es' : 'en');
   const tr = (es: string, en: string) => language === 'en' ? en : es;
@@ -130,6 +131,8 @@ import { invoke, isTauri } from '@tauri-apps/api/core';
   }
 
   let cliPath = $state(localStorage.getItem('cliPath') ?? '');
+  let engineInfo = $state<EngineInfo | null>(null);
+  let engineProblem = $state('');
   let inputs = $state<string[]>([]);
   let keys = $state<string[]>(loadKeys());
   let outputDir = $state(localStorage.getItem('outputDir') ?? '');
@@ -157,10 +160,7 @@ import { invoke, isTauri } from '@tauri-apps/api/core';
     recordEvent('info', 'Aplicación iniciada.', 'Application started.');
     if (!isTauri()) return;
     void (async () => {
-      if (!cliPath) {
-        cliPath = (await invoke<string | null>('default_cli_path')) ?? '';
-        if (cliPath) localStorage.setItem('cliPath', cliPath);
-      }
+      await refreshEngine();
       unlistenLog = await listen<string>('dump-log', (event) => {
         logs = [...logs.slice(-99), event.payload];
         if (/\b(error|warning|warn|falló|fall[oó]|error)\b/i.test(event.payload)) {
@@ -250,7 +250,37 @@ import { invoke, isTauri } from '@tauri-apps/api/core';
       cliPath = selected;
       localStorage.setItem('cliPath', cliPath);
       invalidatePlan();
+      await refreshEngine();
     }
+  }
+
+  async function refreshEngine() {
+    if (!isTauri()) return;
+    try {
+      const info = await invoke<EngineInfo>('engine_info', { cliPath: cliPath || null });
+      engineInfo = info;
+      engineProblem = '';
+      if (!info.overridden && cliPath !== info.path) {
+        cliPath = info.path;
+        localStorage.setItem('cliPath', cliPath);
+      }
+    } catch (error) {
+      engineInfo = null;
+      engineProblem = localizeError(error);
+    }
+  }
+
+  function applyCliPath() {
+    localStorage.setItem('cliPath', cliPath);
+    invalidatePlan();
+    void refreshEngine();
+  }
+
+  function resetCliOverride() {
+    cliPath = '';
+    localStorage.removeItem('cliPath');
+    invalidatePlan();
+    void refreshEngine();
   }
 
   async function validateKeys() {
@@ -298,7 +328,7 @@ import { invoke, isTauri } from '@tauri-apps/api/core';
     busy = true;
     errorMessage = '';
     try {
-      if (!cliPath) throw new Error(tr('Selecciona el ejecutable nsromexefs en Ajustes.', 'Select the nsromexefs executable in Settings.'));
+      if (!engineInfo) throw new Error(tr('No se encontró el motor nsromexefs. Selecciona el ejecutable en Ajustes.', 'No nsromexefs engine was found. Select the executable in Settings.'));
       await work();
     } catch (error) {
       const rawMessage = error instanceof Error ? error.message : String(error || fallback);
@@ -333,7 +363,7 @@ import { invoke, isTauri } from '@tauri-apps/api/core';
 
 <div class="shell">
   <aside class="rail">
-    <div class="brand-mark">n<span>.</span></div>
+    <div class="brand-mark"><img src="/logo.png" alt={tr('Logotipo de nsromexefs', 'nsromexefs logo')} /></div>
     <button class:active={activeTab === 'extract'} class="rail-button" title={tr('Extracción', 'Extraction')} onclick={() => activeTab = 'extract'}>
       <span class="nav-icon">⇩</span><small>{tr('Extraer', 'Extract')}</small>
     </button>
@@ -343,13 +373,13 @@ import { invoke, isTauri } from '@tauri-apps/api/core';
     <button class:active={activeTab === 'events'} class="rail-button" title={tr('Eventos', 'Events')} onclick={() => activeTab = 'events'}>
       <span class="nav-icon">≡</span><small>{tr('Eventos', 'Events')}</small>
     </button>
-    <div class="rail-bottom"><span class="online-dot"></span><small>CLI v0.1.0</small></div>
+    <div class="rail-bottom"><span class:ok={!!engineInfo} class="online-dot"></span><small>{engineInfo?.version ? `CLI v${engineInfo.version}` : 'CLI —'}</small></div>
   </aside>
 
   <main class="main-view">
     <header class="topbar">
       <div class="crumb"><span>NSROMEXEFS</span><b>/</b>{activeTab === 'extract' ? tr('EXTRACCIÓN', 'EXTRACTION') : activeTab === 'settings' ? tr('PREFERENCIAS', 'PREFERENCES') : tr('EVENTOS', 'EVENTS')}</div>
-      <div class="top-status"><button class="language-button" aria-label={tr('Cambiar idioma', 'Change language')} onclick={() => setLanguage(language === 'en' ? 'es' : 'en')}>{language === 'en' ? 'EN / ES' : 'ES / EN'}</button><span class:ok={!!cliPath} class="status-pip"></span>{cliPath ? tr('Motor conectado', 'Engine connected') : tr('Configura el motor CLI', 'Configure the CLI engine')}</div>
+      <div class="top-status"><button class="language-button" aria-label={tr('Cambiar idioma', 'Change language')} onclick={() => setLanguage(language === 'en' ? 'es' : 'en')}>{language === 'en' ? 'EN / ES' : 'ES / EN'}</button><span class:ok={!!engineInfo} class="status-pip"></span>{engineInfo ? tr('Motor conectado', 'Engine connected') : tr('Motor no detectado', 'Engine not detected')}</div>
     </header>
 
     {#if activeTab === 'extract'}
@@ -464,11 +494,19 @@ import { invoke, isTauri } from '@tauri-apps/api/core';
         </aside>
       </div>
     {:else if activeTab === 'settings'}
-      <section class="page-heading settings-heading"><div><div class="eyebrow">{tr('PREFERENCIAS LOCALES', 'LOCAL PREFERENCES')}</div><h1>{tr('Ajustes', 'Settings')}<span class="heading-period">.</span></h1><p>{tr('Configura la CLI que ejecuta el motor y tus archivos de claves.', 'Configure the CLI engine and your key files.')}</p></div></section>
+      <section class="page-heading settings-heading"><div><div class="eyebrow">{tr('PREFERENCIAS LOCALES', 'LOCAL PREFERENCES')}</div><h1>{tr('Ajustes', 'Settings')}<span class="heading-period">.</span></h1><p>{tr('La aplicación incluye el motor. Ajusta aquí las claves, la apariencia y, si lo necesitas, una CLI alternativa.', 'The app bundles its engine. Manage keys, appearance, and, if needed, an alternative CLI.')}</p></div></section>
       <section class="settings-layout">
         <article class="card settings-card"><div class="card-heading"><div class="section-number">01</div><div><h2>{tr('Motor nsromexefs', 'nsromexefs engine')}</h2><p>{tr('La GUI usa la misma CLI para mantener idéntica lógica de extracción.', 'The GUI uses the same CLI extraction logic.')}</p></div></div>
-          <div class="destination-row"><label for="cli">{tr('EJECUTABLE CLI', 'CLI EXECUTABLE')}</label><div class="path-control"><input id="cli" bind:value={cliPath} placeholder={tr('Ruta a nsromexefs.exe', 'Path to nsromexefs.exe')} onchange={() => { localStorage.setItem('cliPath', cliPath); invalidatePlan(); }} /><button onclick={chooseCli} aria-label={tr('Buscar ejecutable', 'Browse for executable')}>↗</button></div></div>
-          <div class="settings-hint">{tr('Compila nsromexefs con Cargo y selecciona su ejecutable. La GUI todavía no se distribuye en un instalador combinado con la CLI.', 'Build nsromexefs with Cargo and select its executable. The GUI is not yet bundled with the CLI in an installer.')}</div>
+          <div class="destination-row"><label for="cli">{tr('EJECUTABLE CLI · OPCIONAL', 'CLI EXECUTABLE · OPTIONAL')}</label><div class="path-control"><input id="cli" bind:value={cliPath} placeholder={tr('Detección automática', 'Automatic detection')} onchange={applyCliPath} /><button onclick={chooseCli} aria-label={tr('Buscar ejecutable', 'Browse for executable')}>↗</button></div></div>
+          {#if engineInfo?.overridden}<button class="text-button reset-engine" onclick={resetCliOverride}>{tr('Volver al motor incluido', 'Use included engine')}</button>{/if}
+          <div class="settings-hint engine-hint" class:missing={!engineInfo}>
+            <span class:ok={!!engineInfo} class="status-pip"></span>
+            {#if engineInfo}
+              <span><strong>{engineInfo.bundled ? tr('Motor incluido con la aplicación', 'Engine bundled with the app') : tr('Motor local detectado', 'Local engine detected')}</strong> · v{engineInfo.version ?? '—'} · {engineInfo.overridden ? tr('ruta personalizada', 'custom path') : tr('detección automática', 'automatic detection')}</span>
+            {:else}
+              <span>{engineProblem || tr('No se encontró el motor nsromexefs. Selecciona el ejecutable o reinstala la aplicación.', 'No nsromexefs engine was found. Select the executable or reinstall the application.')}</span>
+            {/if}
+          </div>
         </article>
         <article class="card settings-card"><div class="card-heading"><div class="section-number">02</div><div><h2>{tr('Archivos de claves', 'Key files')}</h2><p>{tr('Las claves se usan localmente y nunca se imprimen ni se suben.', 'Keys are used locally and are never displayed or uploaded.')}</p></div></div>
           <div class="settings-key-row"><div class="setting-copy"><strong>{keys.length ? tr(`${keys.length} archivos configurados`, `${keys.length} file(s) configured`) : tr('No hay archivos configurados', 'No files configured')}</strong><span>{keys.map((key) => key.split(/[\\/]/).pop()).join(' · ') || tr('Puedes cambiar la selección cuando quieras.', 'You can change your selection at any time.')}</span></div><button class="text-button" onclick={chooseKeys}>{tr('Seleccionar', 'Choose')} <b>↗</b></button></div>
@@ -486,7 +524,7 @@ import { invoke, isTauri } from '@tauri-apps/api/core';
             </select></label>
           </div>
         </article>
-        <article class="about-card credits-card"><div class="brand-mark small-mark">n<span>.</span></div><div><strong>nsromexefs GUI · {tr('en desarrollo', 'in development')}</strong><p>{tr('Interfaz Tauri 2 · procesamiento local con la CLI MIT.', 'Tauri 2 interface · local processing with the MIT-licensed CLI.')}</p><p>{tr('Este proyecto fue creado con asistencia de herramientas de IA; el código y sus resultados son revisados por el mantenedor.', 'This project was created with assistance from AI tools; the maintainer reviews the code and its output.')}</p><strong>{tr('Referencias técnicas y créditos', 'Technical references and credits')}</strong><ul class="credit-links"><li><a href="https://github.com/SciresM/hactool" target="_blank" rel="noreferrer">hactool · SciresM · ISC</a></li><li><a href="https://github.com/jakcron/nstool" target="_blank" rel="noreferrer">nstool · jakcron · MIT</a></li><li><a href="https://github.com/jakcron/libnintendo-hac" target="_blank" rel="noreferrer">libnintendo-hac · jakcron · MIT</a></li><li><a href="https://switchbrew.org" target="_blank" rel="noreferrer">{tr('Documentación de los formatos de Switchbrew', 'Switchbrew format documentation')}</a></li></ul><p>{tr('Las dependencias y sus licencias están documentadas en', 'Dependencies and their licenses are documented in')} <a href="https://github.com/SirEdmundiumRockwell/nsromexefs/blob/main/THIRD-PARTY-NOTICES.md" target="_blank" rel="noreferrer">THIRD-PARTY-NOTICES.md</a>.</p><a href="https://github.com/SirEdmundiumRockwell/nsromexefs" target="_blank" rel="noreferrer">{tr('Código fuente del proyecto', 'Project source code')} <span>↗</span></a></div></article>
+        <article class="about-card credits-card"><div class="brand-mark small-mark"><img src="/logo.png" alt={tr('Logotipo de nsromexefs', 'nsromexefs logo')} /></div><div><strong>nsromexefs GUI · {tr('en desarrollo', 'in development')}</strong><p>{tr('Interfaz Tauri 2 · procesamiento local con la CLI MIT.', 'Tauri 2 interface · local processing with the MIT-licensed CLI.')}</p><p>{tr('Este proyecto fue creado con asistencia de herramientas de IA; el código y sus resultados son revisados por el mantenedor.', 'This project was created with assistance from AI tools; the maintainer reviews the code and its output.')}</p><strong>{tr('Referencias técnicas y créditos', 'Technical references and credits')}</strong><ul class="credit-links"><li><a href="https://github.com/SciresM/hactool" target="_blank" rel="noreferrer">hactool · SciresM · ISC</a></li><li><a href="https://github.com/jakcron/nstool" target="_blank" rel="noreferrer">nstool · jakcron · MIT</a></li><li><a href="https://github.com/jakcron/libnintendo-hac" target="_blank" rel="noreferrer">libnintendo-hac · jakcron · MIT</a></li><li><a href="https://switchbrew.org" target="_blank" rel="noreferrer">{tr('Documentación de los formatos de Switchbrew', 'Switchbrew format documentation')}</a></li></ul><p>{tr('Las dependencias y sus licencias están documentadas en', 'Dependencies and their licenses are documented in')} <a href="https://github.com/SirEdmundiumRockwell/nsromexefs/blob/main/THIRD-PARTY-NOTICES.md" target="_blank" rel="noreferrer">THIRD-PARTY-NOTICES.md</a>.</p><a href="https://github.com/SirEdmundiumRockwell/nsromexefs" target="_blank" rel="noreferrer">{tr('Código fuente del proyecto', 'Project source code')} <span>↗</span></a></div></article>
       </section>
     {:else}
       <section class="page-heading settings-heading"><div><div class="eyebrow">{tr('DIAGNÓSTICO LOCAL', 'LOCAL DIAGNOSTICS')}</div><h1>{tr('Registro de eventos', 'Event log')}<span class="heading-period">.</span></h1><p>{tr('Los eventos y errores recientes se guardan solo en este dispositivo.', 'Recent events and errors are stored on this device only.')}</p></div></section>

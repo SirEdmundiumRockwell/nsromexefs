@@ -94,8 +94,11 @@ Build and run the GUI from `crates/nsromexefs-gui`:
 
 ```console
 npm install
+npm run build:sidecar
 npm run tauri dev
 ```
+
+`npm run tauri build` produces a platform installer that includes the extraction engine as a bundled sidecar, so end users do not need Rust or a separate CLI installation.
 
 ## Documentation
 

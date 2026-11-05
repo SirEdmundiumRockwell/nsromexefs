@@ -4,6 +4,8 @@
 **/node_modules/
 crates/nsromexefs-gui/frontend/dist/
 crates/nsromexefs-gui/src-tauri/gen/
+crates/nsromexefs-gui/src-tauri/binaries/*
+!crates/nsromexefs-gui/src-tauri/binaries/.gitkeep
 
 # Extracción: temporales y estado
 *.nrx-tmp

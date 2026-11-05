@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite frontend --config frontend/vite.config.ts",
     "build": "vite build frontend --config frontend/vite.config.ts",
+    "build:sidecar": "node scripts/prepare-sidecar.mjs",
     "check": "svelte-check --tsconfig frontend/tsconfig.json",
     "tauri": "tauri"
   },

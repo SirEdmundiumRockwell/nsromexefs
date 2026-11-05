@@ -21,9 +21,12 @@ From this directory:
 
 ```console
 npm ci
+npm run build:sidecar
 npm run check
 npm run tauri -- dev
 ```
+
+`build:sidecar` compiles `nsromexefs-cli` in release mode and copies it to `src-tauri/binaries/` with the host target triple, which Tauri requires for the bundled engine. Run it again after changing the CLI. The GUI also finds local `target/debug` and `target/release` builds during development.
 
 To preview only the frontend in a browser (native file dialogs and extraction require the desktop app):
 
@@ -31,7 +34,7 @@ To preview only the frontend in a browser (native file dialogs and extraction re
 npm run dev
 ```
 
-The GUI searches for `nsromexefs` beside its executable and in parent `target/debug` and `target/release` directories. If it cannot find the CLI, open **Settings** and select the binary built with:
+The GUI searches for `nsromexefs` beside its executable and in parent `target/debug` and `target/release` directories. Release builds bundle the CLI as a Tauri sidecar, so the installed app finds its engine automatically. In development, build the workspace first if needed:
 
 ```console
 cargo build --release -p nsromexefs-cli
@@ -43,6 +46,12 @@ To build only the frontend or check its Svelte/TypeScript diagnostics:
 npm run build
 npm run check
 ```
+
+## Build the installer
+
+`npm run tauri -- build` runs the frontend build and `npm run build:sidecar` through `beforeBuildCommand`, then writes the installer to the workspace `target/release/bundle` directory. The sidecar (`src-tauri/binaries/nsromexefs-<target-triple>`) is generated during the build and is not committed. Users do not need Rust or a separate CLI after installing.
+
+The optional CLI path in **Settings** remains available for development or for using an alternative engine build.
 
 ## Project status and credits
 
