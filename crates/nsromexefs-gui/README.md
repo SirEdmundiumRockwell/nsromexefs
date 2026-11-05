@@ -1,20 +1,23 @@
-# GUI de nsromexefs
+# nsromexefs Desktop GUI
 
-Aplicación de escritorio en Tauri 2 + Svelte 5. Este primer corte permite seleccionar uno o dos
-NSP/XCI, validar claves, revisar el plan de `--dry-run`, extraer con opciones de árbol/reanudación
-y ver los eventos y el resultado. La GUI delega las operaciones al ejecutable CLI; no contiene
-lógica independiente de parsing ni extracción.
+The desktop app is built with Tauri 2 and Svelte 5. It provides a graphical workflow for selecting NSP/XCI inputs, validating key files, reviewing a dry-run plan, starting or resuming extraction, and viewing logs and results. Extraction is delegated to the `nsromexefs` CLI; the GUI does not implement a separate parser or extraction engine.
 
-## Requisitos de desarrollo
+The interface supports English and Spanish. Use the language control in the top bar; your selection is saved locally in the app.
 
-- Node.js 22 y npm.
-- Rust 1.90 o posterior para Tauri (MSVC en Windows). El motor CLI/core conserva MSRV 1.82.
-- En Windows: Visual Studio Build Tools con C++ y WebView2 Runtime.
-- En Linux: dependencias Tauri/WebKitGTK documentadas en la guía oficial de Tauri 2.
+**Appearance:** Settings offers four color palettes and four font styles, saved on the device. The default is *Classic Red and Cream* with the *Rounded* font.
 
-## Ejecutar en desarrollo
+**Diagnostics:** the Events tab keeps a local log of recent actions, warnings, and errors (up to 250 entries). Personal paths and key-file names are redacted, and the log can be downloaded or cleared.
 
-Desde esta carpeta:
+## Requirements
+
+- Node.js 22 or newer and npm.
+- Rust 1.90 or newer for Tauri (MSVC toolchain on Windows). The CLI/core have an MSRV of Rust 1.82.
+- Windows: Visual Studio Build Tools with C++ and the WebView2 Runtime.
+- Linux: Tauri 2 system dependencies, including WebKitGTK. See the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/).
+
+## Run in development
+
+From this directory:
 
 ```console
 npm ci
@@ -22,18 +25,25 @@ npm run check
 npm run tauri -- dev
 ```
 
-La GUI intenta localizar `nsromexefs` junto a su ejecutable o en los directorios `target/debug`
-y `target/release` de los directorios superiores. Si no aparece, abre **Ajustes** y selecciona el
-binario CLI compilado con `cargo build --release -p nsromexefs-cli`.
+To preview only the frontend in a browser (native file dialogs and extraction require the desktop app):
 
-Para compilar el frontend sin abrir la ventana:
+```console
+npm run dev
+```
+
+The GUI searches for `nsromexefs` beside its executable and in parent `target/debug` and `target/release` directories. If it cannot find the CLI, open **Settings** and select the binary built with:
+
+```console
+cargo build --release -p nsromexefs-cli
+```
+
+To build only the frontend or check its Svelte/TypeScript diagnostics:
 
 ```console
 npm run build
+npm run check
 ```
 
-## Estado
+## Project status and credits
 
-La GUI está en desarrollo y aún no forma parte de los paquetes de la release v0.1.0. El primer
-corte no incluye extracción por lotes, selección de idioma, preferencias de tema ni instaladores
-que empaqueten automáticamente GUI + CLI.
+The GUI is an early development build and is not included in the v0.1.0 release packages. This project was created with assistance from AI tools; the maintainer reviews and maintains the code. See the repository's [third-party notices](../../THIRD-PARTY-NOTICES.md) for attribution and license information.

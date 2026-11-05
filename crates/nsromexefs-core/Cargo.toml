@@ -1,6 +1,6 @@
 [package]
 name = "nsromexefs-core"
-description = "Motor de extracción NSP/XCI → exefs/romfs (núcleo sin CLI)"
+description = "NSP/XCI to exefs/romfs extraction engine (library, no CLI)"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

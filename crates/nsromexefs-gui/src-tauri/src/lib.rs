@@ -311,7 +311,7 @@ pub fn run() {
             cancel_dump,
         ])
         .run(tauri::generate_context!())
-        .expect("error al iniciar nsromexefs GUI");
+        .expect("failed to start the nsromexefs GUI");
 }
 
 #[cfg(test)]

@@ -1,6 +1,6 @@
 [package]
 name = "nsromexefs-cli"
-description = "CLI de nsromexefs: NSP/XCI → exefs/romfs"
+description = "nsromexefs CLI: extract NSP/XCI containers to exefs and romfs"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
