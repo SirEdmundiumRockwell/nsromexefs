@@ -72,7 +72,7 @@ impl EntryKind {
             EntryKind::Meta => "meta",
             EntryKind::Content => "nca",
             EntryKind::Xml => "xml",
-            EntryKind::Other => "otro",
+            EntryKind::Other => "other",
         }
     }
 }
@@ -96,7 +96,7 @@ impl Pfs0 {
         let mut header = [0u8; 0x10];
         reader.read_exact(&mut header)?;
         if &header[0..4] != PFS0_MAGIC {
-            return Err(Error::Invalid("se esperaba magic PFS0".into()));
+            return Err(Error::Invalid("expected PFS0 magic".into()));
         }
 
         let num_files = u32::from_le_bytes(header[4..8].try_into().unwrap());
@@ -104,12 +104,12 @@ impl Pfs0 {
 
         if num_files > MAX_FILES {
             return Err(Error::Invalid(format!(
-                "PFS0 declara {num_files} archivos (máximo {MAX_FILES})"
+                "PFS0 declares {num_files} files (maximum {MAX_FILES})"
             )));
         }
         if string_table_size > MAX_STRING_TABLE {
             return Err(Error::Invalid(format!(
-                "tabla de nombres de {string_table_size} bytes (máximo {MAX_STRING_TABLE})"
+                "name table of {string_table_size} bytes (maximum {MAX_STRING_TABLE})"
             )));
         }
 
@@ -117,11 +117,11 @@ impl Pfs0 {
         let table_end = HEADER_SIZE
             .checked_add(table_size)
             .and_then(|v| v.checked_add(u64::from(string_table_size)))
-            .ok_or_else(|| Error::Invalid("tamaño de tabla desbordado".into()))?;
+            .ok_or_else(|| Error::Invalid("table size overflow".into()))?;
 
         if table_end > file_len {
             return Err(Error::Invalid(format!(
-                "la tabla PFS0 termina en 0x{table_end:X}, más allá del archivo (0x{file_len:X})"
+                "the PFS0 table ends at 0x{table_end:X}, beyond the file (0x{file_len:X})"
             )));
         }
 
@@ -141,17 +141,17 @@ impl Pfs0 {
             let name_offset = u32::from_le_bytes(raw[16..20].try_into().unwrap()) as usize;
 
             let name = read_c_string(&names, name_offset)
-                .ok_or_else(|| Error::Invalid(format!("entrada {i}: nombre fuera de la tabla")))?;
+                .ok_or_else(|| Error::Invalid(format!("entry {i}: name outside the table")))?;
 
             let absolute = data_offset
                 .checked_add(offset)
-                .ok_or_else(|| Error::Invalid(format!("entrada {i}: offset desbordado")))?;
+                .ok_or_else(|| Error::Invalid(format!("entry {i}: offset overflow")))?;
             let end = absolute
                 .checked_add(size)
-                .ok_or_else(|| Error::Invalid(format!("entrada {i}: tamaño desbordado")))?;
+                .ok_or_else(|| Error::Invalid(format!("entry {i}: size overflow")))?;
             if end > file_len {
                 return Err(Error::Invalid(format!(
-                    "entrada '{name}': rango 0x{absolute:X}..0x{end:X} fuera del archivo (0x{file_len:X})"
+                    "entry '{name}': range 0x{absolute:X}..0x{end:X} outside the file (0x{file_len:X})"
                 )));
             }
 

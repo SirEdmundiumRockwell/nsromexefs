@@ -63,7 +63,7 @@ impl OutputSession {
             }
             Some(_) if !force => {
                 return Err(Error::Invalid(
-                    "el journal no coincide con las fuentes o el plan actual; usa --force para empezar de nuevo".into(),
+                    "the journal does not match the current sources or plan; use --force to start over".into(),
                 ));
             }
             _ => Journal {
@@ -238,7 +238,7 @@ pub(crate) fn atomic_json<T: Serialize>(path: &Path, value: &T) -> Result<(), Er
 
 fn persist_json<T: Serialize>(path: &Path, value: &T) -> Result<(), Error> {
     let bytes = serde_json::to_vec_pretty(value)
-        .map_err(|err| Error::Invalid(format!("no se puede serializar el estado: {err}")))?;
+        .map_err(|err| Error::Invalid(format!("cannot serialize state: {err}")))?;
     let temp = path.with_file_name(format!(
         ".{}.part",
         path.file_name().unwrap_or_default().to_string_lossy()
@@ -281,7 +281,7 @@ fn read_journal(root: &Path) -> Result<Journal, Error> {
             }
         }
     }
-    Err(Error::Invalid("journal ausente o ilegible".into()))
+    Err(Error::Invalid("journal missing or unreadable".into()))
 }
 
 fn hash_hex(bytes: &[u8]) -> String {

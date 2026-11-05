@@ -108,10 +108,10 @@ pub fn extract_exefs(
         let start = entry.offset as usize;
         let end = start
             .checked_add(entry.size as usize)
-            .ok_or_else(|| Error::Invalid(format!("entrada '{}' desbordada", entry.name)))?;
+            .ok_or_else(|| Error::Invalid(format!("entry '{}' overflow", entry.name)))?;
         if end > pfs0_data.len() {
             return Err(Error::Invalid(format!(
-                "entrada '{}' fuera del PFS0 (0x{start:X}..0x{end:X} > 0x{:X})",
+                "entry '{}' outside the PFS0 (0x{start:X}..0x{end:X} > 0x{:X})",
                 entry.name,
                 pfs0_data.len()
             )));
@@ -140,22 +140,22 @@ fn read_pfs0(source: &mut dyn SectionRead) -> Result<Pfs0InMemory> {
 
     if superblock.pfs0_size == 0 {
         return Err(Error::Invalid(
-            "el superbloque PFS0 declara tamaño cero".into(),
+            "the PFS0 superblock declares a size of zero".into(),
         ));
     }
     if superblock.pfs0_size > MAX_PFS0_IN_MEMORY {
         return Err(Error::Unsupported(format!(
-            "PFS0 de {} bytes: demasiado grande para leerlo en memoria (máximo {})",
+            "PFS0 of {} bytes: too large to read into memory (maximum {})",
             superblock.pfs0_size, MAX_PFS0_IN_MEMORY
         )));
     }
     let end = superblock
         .pfs0_offset
         .checked_add(superblock.pfs0_size)
-        .ok_or_else(|| Error::Invalid("rango del PFS0 desbordado".into()))?;
+        .ok_or_else(|| Error::Invalid("PFS0 range overflow".into()))?;
     if end > source.size() {
         return Err(Error::Invalid(format!(
-            "el PFS0 (0x{:X}..0x{end:X}) cae fuera de la sección {} (0x{:X} bytes)",
+            "the PFS0 (0x{:X}..0x{end:X}) falls outside section {} (0x{:X} bytes)",
             superblock.pfs0_offset,
             source.index(),
             source.size()
@@ -184,15 +184,15 @@ pub fn romfs_index(source: &mut dyn SectionRead) -> Result<RomFsIndex> {
 
     if fs_size == 0 {
         return Err(Error::Invalid(
-            "la cabecera IVFC declara un RomFS vacío".into(),
+            "the IVFC header declares an empty RomFS".into(),
         ));
     }
     let fs_end = fs_offset
         .checked_add(fs_size)
-        .ok_or_else(|| Error::Invalid("rango del RomFS desbordado".into()))?;
+        .ok_or_else(|| Error::Invalid("RomFS range overflow".into()))?;
     if fs_end > source.size() {
         return Err(Error::Invalid(format!(
-            "el RomFS (0x{fs_offset:X}..0x{fs_end:X}) cae fuera de la sección {} (0x{:X} bytes)",
+            "the RomFS (0x{fs_offset:X}..0x{fs_end:X}) falls outside section {} (0x{:X} bytes)",
             source.index(),
             source.size()
         )));
@@ -208,7 +208,7 @@ pub fn romfs_index(source: &mut dyn SectionRead) -> Result<RomFsIndex> {
         fs_size,
         header.dir_meta_offset,
         header.dir_meta_size,
-        "directorios",
+        "directories",
     )?;
     let file_meta = read_table(
         source,
@@ -216,7 +216,7 @@ pub fn romfs_index(source: &mut dyn SectionRead) -> Result<RomFsIndex> {
         fs_size,
         header.file_meta_offset,
         header.file_meta_size,
-        "archivos",
+        "files",
     )?;
 
     let romfs = RomFs::new(header, dir_meta, file_meta)?;
@@ -236,16 +236,16 @@ pub fn romfs_index(source: &mut dyn SectionRead) -> Result<RomFsIndex> {
         let end = entry
             .offset
             .checked_add(entry.size)
-            .ok_or_else(|| Error::Invalid(format!("tamaño desbordado en '{}'", entry.path)))?;
+            .ok_or_else(|| Error::Invalid(format!("size overflow in '{}'", entry.path)))?;
         if end > fs_size {
             return Err(Error::Invalid(format!(
-                "'{}' (0x{:X}..0x{end:X}) cae fuera del RomFS (0x{fs_size:X})",
+                "'{}' (0x{:X}..0x{end:X}) falls outside the RomFS (0x{fs_size:X})",
                 entry.path, entry.offset
             )));
         }
         bytes = bytes
             .checked_add(entry.size)
-            .ok_or_else(|| Error::Invalid("tamaño total del RomFS desbordado".into()))?;
+            .ok_or_else(|| Error::Invalid("total RomFS size overflow".into()))?;
     }
 
     reject_file_directory_clashes(&tree.files, &seen_names)?;
@@ -272,7 +272,7 @@ pub fn romfs_read_file(source: &mut dyn SectionRead, path: &str) -> Result<Optio
     };
     if entry.size > MAX_SINGLE_FILE {
         return Err(Error::Unsupported(format!(
-            "'{path}' ocupa {} bytes: demasiado grande para leerlo de una vez",
+            "'{path}' is {} bytes: too large to read at once",
             entry.size
         )));
     }
@@ -331,21 +331,19 @@ fn read_table(
     label: &str,
 ) -> Result<Vec<u8>> {
     if table_size == 0 {
-        return Err(Error::Invalid(format!(
-            "el RomFS no tiene tabla de {label}"
-        )));
+        return Err(Error::Invalid(format!("the RomFS has no {label} table")));
     }
     if table_size > MAX_META_TABLE {
         return Err(Error::Invalid(format!(
-            "tabla de {label} de {table_size} bytes (máximo {MAX_META_TABLE})"
+            "{label} table of {table_size} bytes (maximum {MAX_META_TABLE})"
         )));
     }
     let end = table_offset
         .checked_add(table_size)
-        .ok_or_else(|| Error::Invalid(format!("rango de la tabla de {label} desbordado")))?;
+        .ok_or_else(|| Error::Invalid(format!("{label} table range overflow")))?;
     if end > fs_size {
         return Err(Error::Invalid(format!(
-            "la tabla de {label} (0x{table_offset:X}..0x{end:X}) cae fuera del RomFS (0x{fs_size:X})"
+            "the {label} table (0x{table_offset:X}..0x{end:X}) falls outside the RomFS (0x{fs_size:X})"
         )));
     }
 
@@ -414,7 +412,7 @@ fn resume_file(path: &Path, label: &str, opts: &WriteOptions) -> Result<Option<E
         return Ok(None);
     }
     let digest = decode_sha256(&sha256)
-        .ok_or_else(|| Error::Invalid(format!("hash inválido en el journal para '{key}'")))?;
+        .ok_or_else(|| Error::Invalid(format!("invalid hash in the journal for '{key}'")))?;
     Ok(Some(ExtractedFile {
         path: relative_name(label),
         size,
@@ -478,7 +476,7 @@ impl AtomicWriter {
         let file_name = path
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_else(|| "salida".to_string());
+            .unwrap_or_else(|| "output".to_string());
         let tmp_path = path.with_file_name(format!(".{file_name}.part"));
 
         Ok(Self {
@@ -506,7 +504,7 @@ impl AtomicWriter {
 
         if self.written != expected {
             return Err(Error::Invalid(format!(
-                "'{path}': se escribieron {} bytes, se esperaban {expected}",
+                "'{path}': wrote {} bytes, expected {expected}",
                 self.written
             )));
         }
@@ -542,34 +540,32 @@ impl Drop for AtomicWriter {
 /// Valida un nombre suelto (sin separadores) para el sistema de archivos actual.
 fn validate_component(name: &str) -> Result<()> {
     if name.is_empty() {
-        return Err(Error::Invalid("nombre de archivo vacío".into()));
+        return Err(Error::Invalid("empty file name".into()));
     }
     if name == "." || name == ".." {
-        return Err(Error::Invalid(format!(
-            "nombre de archivo no permitido: '{name}'"
-        )));
+        return Err(Error::Invalid(format!("file name not allowed: '{name}'")));
     }
     if name.len() > MAX_PATH_LEN {
-        return Err(Error::Invalid("nombre de archivo demasiado largo".into()));
+        return Err(Error::Invalid("file name too long".into()));
     }
     if name.contains(['/', '\\']) {
         return Err(Error::Invalid(format!(
-            "el nombre '{name}' contiene un separador"
+            "the name '{name}' contains a separator"
         )));
     }
     if name.chars().any(|c| c.is_control()) {
         return Err(Error::Invalid(format!(
-            "el nombre '{name}' contiene caracteres de control"
+            "the name '{name}' contains control characters"
         )));
     }
     if name.contains(['<', '>', ':', '"', '|', '?', '*']) {
         return Err(Error::Invalid(format!(
-            "el nombre '{name}' contiene caracteres no válidos en Windows"
+            "the name '{name}' contains characters that are invalid on Windows"
         )));
     }
     if name.ends_with(' ') || name.ends_with('.') {
         return Err(Error::Invalid(format!(
-            "el nombre '{name}' termina en espacio o punto (no válido en Windows)"
+            "the name '{name}' ends with a space or period (not valid on Windows)"
         )));
     }
     Ok(())
@@ -577,7 +573,7 @@ fn validate_component(name: &str) -> Result<()> {
 
 fn validate_romfs_path(path: &str) -> Result<()> {
     if path.is_empty() || path.len() > MAX_PATH_LEN {
-        return Err(Error::Invalid(format!("ruta de RomFS inválida: '{path}'")));
+        return Err(Error::Invalid(format!("invalid RomFS path: '{path}'")));
     }
     for component in path.split('/') {
         validate_component(component)?;
@@ -643,7 +639,7 @@ mod tests {
         for name in [
             "a:b", "a?b", "a*b", "a\"b", "a<b", "a>b", "a|b", "a\\b", "a/b",
         ] {
-            assert!(validate_component(name).is_err(), "{name} debería fallar");
+            assert!(validate_component(name).is_err(), "{name} should fail");
         }
         assert!(validate_component("main").is_ok());
         assert!(validate_component("SinkingSword.bfevfl").is_ok());

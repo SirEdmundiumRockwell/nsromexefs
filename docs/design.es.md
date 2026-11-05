@@ -1,6 +1,6 @@
 # nsromexefs — Diseño técnico
 
-> **English summary:** This is the original technical design document, kept in Spanish. It covers the container model, cryptography, extraction pipeline, CLI, GUI, testing, and release plan. Some implementation details have evolved since it was written; the [README](../README.md), the source code, and [`THIRD-PARTY-NOTICES.md`](../THIRD-PARTY-NOTICES.md) are authoritative. For user-facing documentation, start with the [README](../README.md) and the [key file guide](keys.md).
+> **English summary:** This is the original technical design document, kept in Spanish. It covers the container model, cryptography, extraction pipeline, CLI, GUI, testing, and release plan. Some implementation details have evolved since it was written; the [README](../README.md), the source code, and [`THIRD-PARTY-NOTICES.md`](../THIRD-PARTY-NOTICES.md) are authoritative. User-facing CLI and core messages are now emitted in English, while the GUI translates them for its Spanish locale. For user-facing documentation, start with the [README](../README.md) and the [key file guide](keys.md).
 
 > **Estado:** v0.1 · diseño cerrado · M0-M6 implementados y validados (NSP y XCI reales)
 > **Versión del documento:** 1.2

@@ -78,56 +78,111 @@ import { invoke, isTauri } from '@tauri-apps/api/core';
   }
 
   function localizeLogLine(line: string) {
-    if (language === 'es') return line;
-    return line.replace(/^(\s*…\s*)(.+?) de (.+)$/u, '$1$2 of $3');
+    // The CLI emits English progress lines ("… X of Y"); localize them for Spanish.
+    const localized = language === 'es'
+      ? line.replace(/^(\s*…\s*)(.+?) of (.+)$/u, '$1$2 de $3')
+      : line.replace(/^(\s*…\s*)(.+?) de (.+)$/u, '$1$2 of $3');
+    return translateError(localized, language);
+  }
+
+  // The GUI backend keeps its own messages in Spanish while the CLI/core emit
+  // English, so localizeError translates in whichever direction is needed.
+  const spanishToEnglish: Array<[RegExp, string]> = [
+    [/^falta la base:.*$/i, 'Missing base game: an update requires its matching base NSP/XCI container.'],
+    [/^falta `header_key`.*$/i, 'The keyset is missing `header_key` (32 bytes are required).'],
+    [/^falta `titlekek_(\d+)` \(generación de clave declarada: (\d+)\)$/i, 'The keyset is missing `titlekek_$1` (declared key generation: $2).'],
+    [/^falta el titlekey del rights id (.+)$/i, 'The title key for rights ID $1 is missing.'],
+    [/^falta `key_area_key_(.+)` en el keyset$/i, 'The keyset is missing `key_area_key_$1`.'],
+    [/^ticket personalizado:.*$/i, 'Personalized ticket: its title key is encrypted with the issuing console’s RSA key.'],
+    [/^archivo de claves inválido \((.+)\): (.+)$/i, 'Invalid key file ($1): $2'],
+    [/^archivo de claves inválido (.+)$/i, 'Invalid key file: $1'],
+    [/^ya existe (.+); usa --force para sobrescribir$/i, '$1 already exists; use --force to overwrite it.'],
+    [/^espacio insuficiente en (.+): se necesitan (\d+) bytes y hay (\d+)$/i, 'Not enough disk space at $1: $2 bytes required, $3 available.'],
+    [/^espacio insuficiente en (.+)$/i, 'Not enough disk space: $1'],
+    [/^la verificación falló: (\d+) problema\(s\) en (\d+) archivo\(s\)$/i, 'Verification failed: $1 issue(s) across $2 file(s).'],
+    [/^la verificación falló: (.+)$/i, 'Verification failed: $1'],
+    [/^no está disponible la versión (.+) \(disponibles: (.+)\)$/i, 'Version $1 is not available (available: $2).'],
+    [/^no está disponible la versión (.+)$/i, 'Version is unavailable: $1'],
+    [/^colisión de nombres en el destino: (.+)$/i, 'Name collision in the destination: $1'],
+    [/^la base no corresponde al update: el update pertenece a (.+), pero la base es (.+)$/i, 'The base game does not match the update: the update belongs to $1, but the base is $2.'],
+    [/^la base no corresponde al update: (.+)$/i, 'The base game does not match the update: $1'],
+    [/^el lote terminó con (\d+) error\(es\) de (\d+) título\(s\)$/i, 'Batch finished with $1 error(s) out of $2 title(s).'],
+    [/^el lote terminó con (.+)$/i, 'Batch finished with errors: $1'],
+    [/^formato no soportado: (.+)$/i, 'Unsupported format: $1'],
+    [/^archivo inválido: (.+)$/i, 'Invalid file: $1'],
+    [/^error de E\/S: (.+)$/i, 'I/O error: $1'],
+    [/^Selecciona al menos un archivo de claves\.$/, 'Select at least one key file.'],
+    [/^Selecciona una carpeta de destino\.$/, 'Choose an output folder.'],
+    [/^Selecciona uno o dos contenedores NSP\/XCI\.$/, 'Select one or two NSP/XCI containers.'],
+    [/^No encuentro el archivo: (.+)$/i, 'File not found: $1'],
+    [/^No encuentro nsromexefs\..*$/, 'Could not find nsromexefs. Select the CLI executable in Settings.'],
+    [/^No se pudo ejecutar nsromexefs: (.+)$/i, 'Could not run nsromexefs: $1'],
+    [/^No se pudo iniciar nsromexefs: (.+)$/i, 'Could not start nsromexefs: $1'],
+    [/^No se pudo cancelar la extracción: (.+)$/i, 'Could not cancel extraction: $1'],
+    [/^No se pudo consultar el proceso: (.+)$/i, 'Could not check the process: $1'],
+    [/^Falló la lectura de la respuesta de nsromexefs\.$/i, 'Could not read the response from nsromexefs.'],
+    [/^El estado de extracción no está disponible\.$/i, 'Extraction state is unavailable.'],
+    [/^Ya hay una extracción en curso\.$/i, 'An extraction is already running.'],
+    [/^No hay (?:un proceso de extracción activo|ninguna extracción en curso)\.$/i, 'There is no active extraction process.'],
+    [/^La extracción se canceló\.$/i, 'The extraction was cancelled.'],
+    [/^nsromexefs terminó con código (.+)\.$/i, 'nsromexefs exited with code $1.'],
+    [/^nsromexefs devolvió JSON no válido: (.+)$/i, 'nsromexefs returned invalid JSON: $1'],
+  ];
+
+  const englishToSpanish: Array<[RegExp, string]> = [
+    [/^missing base:.*$/i, 'Falta la base: un update necesita su contenedor base NSP/XCI.'],
+    [/^missing `header_key`.*$/i, 'Falta `header_key` en el keyset (se necesitan 32 bytes).'],
+    [/^missing `titlekek_(\d+)` \(declared key generation: (\d+)\)$/i, 'Falta `titlekek_$1` (generación de clave declarada: $2).'],
+    [/^missing the title key for rights ID (.+)$/i, 'Falta el titlekey del rights id $1.'],
+    [/^missing `key_area_key_(.+)` in the keyset$/i, 'Falta `key_area_key_$1` en el keyset.'],
+    [/^personalized ticket:.*$/i, 'Ticket personalizado: su titlekey está cifrado con la clave RSA de la consola que lo emitió.'],
+    [/^invalid key file \((.+)\): (.+)$/i, 'Archivo de claves inválido ($1): $2'],
+    [/^invalid key file (.+)$/i, 'Archivo de claves inválido: $1'],
+    [/^(.+) already exists; use --force to overwrite$/i, 'Ya existe $1; usa --force para sobrescribir.'],
+    [/^not enough space at (.+): (\d+) bytes required, (\d+) available$/i, 'Espacio insuficiente en $1: se necesitan $2 bytes y hay $3.'],
+    [/^not enough space at (.+)$/i, 'Espacio insuficiente en $1.'],
+    [/^verification failed: (\d+) issue\(s\) across (\d+) file\(s\)$/i, 'La verificación falló: $1 problema(s) en $2 archivo(s).'],
+    [/^verification failed: (.+)$/i, 'La verificación falló: $1'],
+    [/^version (.+) is not available \(available: (.+)\)$/i, 'No está disponible la versión $1 (disponibles: $2).'],
+    [/^version (.+) is not available$/i, 'No está disponible la versión $1.'],
+    [/^name collision in the destination: (.+)$/i, 'Colisión de nombres en el destino: $1'],
+    [/^the base does not match the update: the update belongs to (.+), but the base is (.+)$/i, 'La base no corresponde al update: el update pertenece a $1, pero la base es $2.'],
+    [/^the base does not match the update: (.+)$/i, 'La base no corresponde al update: $1'],
+    [/^the batch finished with (\d+) error\(s\) out of (\d+) title\(s\)$/i, 'El lote terminó con $1 error(es) de $2 título(s).'],
+    [/^the batch finished with (.+)$/i, 'El lote terminó con errores: $1'],
+    [/^unsupported format: (.+)$/i, 'Formato no soportado: $1'],
+    [/^invalid file: (.+)$/i, 'Archivo inválido: $1'],
+    [/^I\/O error: (.+)$/i, 'Error de E/S: $1'],
+    [/^(.+): does not exist$/i, '$1: no existe'],
+    [/^(.+): expected a folder with exefs\/ and romfs\/$/i, '$1: se esperaba una carpeta con exefs/ y romfs/'],
+    [/^(.+): no SHA256SUMS found$/i, '$1: no se encontró ningún SHA256SUMS'],
+    [/^(.+): not a folder$/i, '$1: no es una carpeta'],
+    [/^(.+): no \.nsp or \.xci files found$/i, '$1: no se encontró ningún .nsp ni .xci'],
+    [/^(.+): file too small to be a container$/i, '$1: archivo demasiado pequeño para ser un contenedor'],
+    [/^(.+): not a recognizable NSP or XCI$/i, '$1: no es un NSP ni un XCI reconocible'],
+    [/^(.+): no \.cnmt\.nca found: the title cannot be identified$/i, '$1: no hay ningún .cnmt.nca: no se puede identificar el título'],
+    [/^(.+): the CNMT lists no program NCA$/i, '$1: el CNMT no lista ninguna NCA de programa'],
+    [/^the keyset does not include header_key: the NCA header cannot be read$/i, 'El keyset no incluye header_key: no se puede leer la cabecera NCA'],
+    [/^no key file was provided; use -k prod\.keys$/i, 'No se indicó ningún archivo de claves; usa -k prod.keys'],
+    [/^the journal does not match the current sources or plan; use --force to start over$/i, 'El journal no coincide con las fuentes o el plan actual; usa --force para empezar de nuevo'],
+    [/^unrecognized ticket signature type: (.+)$/i, 'Tipo de firma de ticket no reconocido: $1'],
+    [/^NCA too small: (.+)$/i, 'NCA demasiado pequeña: $1'],
+    [/^this content has no romfs$/i, 'Este contenido no tiene romfs.'],
+    [/^this content has no exefs \(is it a DLC\?\)$/i, 'Este contenido no tiene exefs (¿es un DLC?).'],
+    [/^the container has no RomFS$/i, 'El contenedor no tiene RomFS.'],
+    [/^the update has no RomFS$/i, 'El update no tiene RomFS.'],
+    [/^the base has no RomFS$/i, 'La base no tiene RomFS.'],
+  ];
+
+  function translateError(message: string, target: 'es' | 'en') {
+    const rules = target === 'es' ? englishToSpanish : spanishToEnglish;
+    for (const [pattern, replacement] of rules) if (pattern.test(message)) return message.replace(pattern, replacement);
+    return message;
   }
 
   function localizeError(value: unknown): string {
     const message = value instanceof Error ? value.message : String(value ?? '');
-    if (language === 'es') return message;
-    const rules: Array<[RegExp, string]> = [
-      [/^falta la base:.*$/i, 'Missing base game: an update requires its matching base NSP/XCI container.'],
-      [/^falta `header_key`.*$/i, 'The keyset is missing `header_key` (32 bytes are required).'],
-      [/^falta `titlekek_(\d+)` \(generación de clave declarada: (\d+)\)$/i, 'The keyset is missing `titlekek_$1` (declared key generation: $2).'],
-      [/^falta el titlekey del rights id (.+)$/i, 'The title key for rights ID $1 is missing.'],
-      [/^falta `key_area_key_(.+)` en el keyset$/i, 'The keyset is missing `key_area_key_$1`.'],
-      [/^ticket personalizado:.*$/i, 'Personalized ticket: its title key is encrypted with the issuing console’s RSA key.'],
-      [/^archivo de claves inválido \((.+)\): (.+)$/i, 'Invalid key file ($1): $2'],
-      [/^archivo de claves inválido (.+)$/i, 'Invalid key file: $1'],
-      [/^ya existe (.+); usa --force para sobrescribir$/i, '$1 already exists; use --force to overwrite it.'],
-      [/^espacio insuficiente en (.+): se necesitan (\d+) bytes y hay (\d+)$/i, 'Not enough disk space at $1: $2 bytes required, $3 available.'],
-      [/^espacio insuficiente en (.+)$/i, 'Not enough disk space: $1'],
-      [/^la verificación falló: (\d+) problema\(s\) en (\d+) archivo\(s\)$/i, 'Verification failed: $1 issue(s) across $2 file(s).'],
-      [/^la verificación falló: (.+)$/i, 'Verification failed: $1'],
-      [/^no está disponible la versión (.+) \(disponibles: (.+)\)$/i, 'Version $1 is not available (available: $2).'],
-      [/^no está disponible la versión (.+)$/i, 'Version is unavailable: $1'],
-      [/^colisión de nombres en el destino: (.+)$/i, 'Name collision in the destination: $1'],
-      [/^la base no corresponde al update: el update pertenece a (.+), pero la base es (.+)$/i, 'The base game does not match the update: the update belongs to $1, but the base is $2.'],
-      [/^la base no corresponde al update: (.+)$/i, 'The base game does not match the update: $1'],
-      [/^el lote terminó con (\d+) error\(es\) de (\d+) título\(s\)$/i, 'Batch finished with $1 error(s) out of $2 title(s).'],
-      [/^el lote terminó con (.+)$/i, 'Batch finished with errors: $1'],
-      [/^formato no soportado: (.+)$/i, 'Unsupported format: $1'],
-      [/^archivo inválido: (.+)$/i, 'Invalid file: $1'],
-      [/^error de E\/S: (.+)$/i, 'I/O error: $1'],
-      [/^Selecciona al menos un archivo de claves\.$/, 'Select at least one key file.'],
-      [/^Selecciona una carpeta de destino\.$/, 'Choose an output folder.'],
-      [/^Selecciona uno o dos contenedores NSP\/XCI\.$/, 'Select one or two NSP/XCI containers.'],
-      [/^No encuentro el archivo: (.+)$/i, 'File not found: $1'],
-      [/^No encuentro nsromexefs\..*$/, 'Could not find nsromexefs. Select the CLI executable in Settings.'],
-      [/^No se pudo ejecutar nsromexefs: (.+)$/i, 'Could not run nsromexefs: $1'],
-      [/^No se pudo iniciar nsromexefs: (.+)$/i, 'Could not start nsromexefs: $1'],
-      [/^No se pudo cancelar la extracción: (.+)$/i, 'Could not cancel extraction: $1'],
-      [/^No se pudo consultar el proceso: (.+)$/i, 'Could not check the process: $1'],
-      [/^Falló la lectura de la respuesta de nsromexefs\.$/i, 'Could not read the response from nsromexefs.'],
-      [/^El estado de extracción no está disponible\.$/i, 'Extraction state is unavailable.'],
-      [/^Ya hay una extracción en curso\.$/i, 'An extraction is already running.'],
-      [/^No hay (?:un proceso de extracción activo|ninguna extracción en curso)\.$/i, 'There is no active extraction process.'],
-      [/^La extracción se canceló\.$/i, 'The extraction was cancelled.'],
-      [/^nsromexefs terminó con código (.+)\.$/i, 'nsromexefs exited with code $1.'],
-      [/^nsromexefs devolvió JSON no válido: (.+)$/i, 'nsromexefs returned invalid JSON: $1'],
-    ];
-    for (const [pattern, replacement] of rules) if (pattern.test(message)) return message.replace(pattern, replacement);
-    return message;
+    return translateError(message, language);
   }
 
   let cliPath = $state(localStorage.getItem('cliPath') ?? '');
@@ -164,7 +219,11 @@ import { invoke, isTauri } from '@tauri-apps/api/core';
       unlistenLog = await listen<string>('dump-log', (event) => {
         logs = [...logs.slice(-99), event.payload];
         if (/\b(error|warning|warn|falló|fall[oó]|error)\b/i.test(event.payload)) {
-          recordEvent(/\b(error|falló|fall[oó])\b/i.test(event.payload) ? 'error' : 'warning', event.payload, localizeError(event.payload));
+          recordEvent(
+            /\b(error|falló|fall[oó])\b/i.test(event.payload) ? 'error' : 'warning',
+            translateError(event.payload, 'es'),
+            translateError(event.payload, 'en'),
+          );
         }
       });
       unlistenState = await listen<string>('dump-state', (event) => {
@@ -321,7 +380,7 @@ import { invoke, isTauri } from '@tauri-apps/api/core';
     } catch (error) {
       const rawMessage = error instanceof Error ? error.message : String(error);
       errorMessage = localizeError(rawMessage);
-      recordEvent('error', rawMessage, localizeError(rawMessage));
+      recordEvent('error', translateError(rawMessage, 'es'), translateError(rawMessage, 'en'));
     }
   }
 
@@ -335,7 +394,7 @@ import { invoke, isTauri } from '@tauri-apps/api/core';
       const rawMessage = error instanceof Error ? error.message : String(error || fallback);
       errorMessage = localizeError(rawMessage);
       phase = 'error';
-      recordEvent('error', rawMessage, localizeError(rawMessage));
+      recordEvent('error', translateError(rawMessage, 'es'), translateError(rawMessage, 'en'));
     } finally {
       busy = false;
     }

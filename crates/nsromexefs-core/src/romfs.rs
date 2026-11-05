@@ -32,7 +32,7 @@ impl RomFsHeader {
     pub fn parse(data: &[u8]) -> Result<Self> {
         if data.len() < ROMFS_HEADER_LEN {
             return Err(Error::Invalid(format!(
-                "cabecera RomFS truncada: {} bytes",
+                "truncated RomFS header: {} bytes",
                 data.len()
             )));
         }
@@ -46,7 +46,7 @@ impl RomFsHeader {
         };
         if header.header_size != ROMFS_HEADER_LEN as u64 {
             return Err(Error::Unsupported(format!(
-                "cabecera RomFS de 0x{:X} bytes (solo se conoce 0x50)",
+                "RomFS header of 0x{:X} bytes (only 0x50 is known)",
                 header.header_size
             )));
         }
@@ -120,7 +120,7 @@ impl RomFs {
             .is_none_or(|end| end > data.len())
         {
             return Err(Error::Invalid(format!(
-                "entrada de directorio en 0x{offset:X} fuera de la tabla (0x{:X} bytes)",
+                "directory entry at 0x{offset:X} outside the table (0x{:X} bytes)",
                 data.len()
             )));
         }
@@ -128,10 +128,10 @@ impl RomFs {
         let name_at = at + DIR_ENTRY_LEN;
         let name_end = name_at
             .checked_add(name_size)
-            .ok_or_else(|| Error::Invalid("tamaño de nombre de directorio desbordado".into()))?;
+            .ok_or_else(|| Error::Invalid("directory name length overflow".into()))?;
         if name_end > data.len() {
             return Err(Error::Invalid(format!(
-                "nombre de directorio en 0x{offset:X} termina fuera de la tabla"
+                "directory name at 0x{offset:X} ends outside the table"
             )));
         }
         Ok(DirView {
@@ -150,7 +150,7 @@ impl RomFs {
             .is_none_or(|end| end > data.len())
         {
             return Err(Error::Invalid(format!(
-                "entrada de archivo en 0x{offset:X} fuera de la tabla (0x{:X} bytes)",
+                "file entry at 0x{offset:X} outside the table (0x{:X} bytes)",
                 data.len()
             )));
         }
@@ -158,10 +158,10 @@ impl RomFs {
         let name_at = at + FILE_ENTRY_LEN;
         let name_end = name_at
             .checked_add(name_size)
-            .ok_or_else(|| Error::Invalid("tamaño de nombre de archivo desbordado".into()))?;
+            .ok_or_else(|| Error::Invalid("file name length overflow".into()))?;
         if name_end > data.len() {
             return Err(Error::Invalid(format!(
-                "nombre de archivo en 0x{offset:X} termina fuera de la tabla"
+                "file name at 0x{offset:X} ends outside the table"
             )));
         }
         Ok(FileView {
@@ -181,7 +181,7 @@ impl RomFs {
         while let Some((dir_offset, prefix)) = stack.pop() {
             if !visited.insert(dir_offset) {
                 return Err(Error::Invalid(format!(
-                    "bucle en el árbol de directorios en 0x{dir_offset:X}"
+                    "loop in the directory tree at 0x{dir_offset:X}"
                 )));
             }
             let dir = self.dir_at(dir_offset)?;
@@ -197,16 +197,14 @@ impl RomFs {
                         .header
                         .data_offset
                         .checked_add(entry.offset)
-                        .ok_or_else(|| {
-                            Error::Invalid("offset de archivo del RomFS desbordado".into())
-                        })?,
+                        .ok_or_else(|| Error::Invalid("RomFS file offset overflow".into()))?,
                     size: entry.size,
                 });
                 file = entry.sibling;
                 seen += 1;
                 if seen > MAX_ENTRIES {
                     return Err(Error::Invalid(
-                        "la lista de archivos de un directorio no termina".into(),
+                        "a directory file list does not terminate".into(),
                     ));
                 }
             }
@@ -217,7 +215,7 @@ impl RomFs {
                 let sub = self.dir_at(child)?;
                 if sub.name.is_empty() {
                     return Err(Error::Invalid(format!(
-                        "subdirectorio sin nombre en 0x{child:X}"
+                        "unnamed subdirectory at 0x{child:X}"
                     )));
                 }
                 stack.push((child, join_path(&prefix, sub.name)));
@@ -225,14 +223,14 @@ impl RomFs {
                 seen += 1;
                 if seen > MAX_ENTRIES {
                     return Err(Error::Invalid(
-                        "la lista de subdirectorios no termina".into(),
+                        "the subdirectory list does not terminate".into(),
                     ));
                 }
             }
 
             if out.files.len() > MAX_ENTRIES {
                 return Err(Error::Invalid(format!(
-                    "el RomFS supera las {MAX_ENTRIES} entradas"
+                    "the RomFS exceeds {MAX_ENTRIES} entries"
                 )));
             }
             out.dirs = visited.len() - 1;
@@ -244,7 +242,7 @@ impl RomFs {
 
 fn parse_name(bytes: &[u8]) -> Result<&str> {
     std::str::from_utf8(bytes)
-        .map_err(|_| Error::Invalid("nombre de entrada RomFS que no es UTF-8".into()))
+        .map_err(|_| Error::Invalid("RomFS entry name that is not UTF-8".into()))
 }
 
 fn join_path(prefix: &str, name: &str) -> String {

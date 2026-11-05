@@ -48,14 +48,20 @@ if (build.status !== 0) {
 }
 
 const binaryName = `nsromexefs${exeExtension}`;
+// Cargo may place the build in target/<profile> or target/<triple>/<profile>
+// depending on CARGO_BUILD_TARGET or previous cross builds. Pick the newest
+// existing artifact so a stale build from the other layout is never bundled.
 const candidates = [
   join(repoRoot, 'target', triple, profile, binaryName),
   join(repoRoot, 'target', profile, binaryName)
-];
-const source = candidates.find((candidate) => existsSync(candidate));
+]
+  .filter((candidate) => existsSync(candidate))
+  .sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs);
+const source = candidates[0];
 if (!source) {
-  fail(`Built CLI not found. Checked:\n  ${candidates.join('\n  ')}`);
+  fail(`Built CLI not found in:\n  ${join(repoRoot, 'target', triple, profile)}\n  ${join(repoRoot, 'target', profile)}`);
 }
+console.log(`[sidecar] Using newest build: ${source}`);
 
 const destinationDir = join(appDir, 'src-tauri', 'binaries');
 mkdirSync(destinationDir, { recursive: true });

@@ -67,21 +67,16 @@ impl VerifyReport {
 /// Verifica `root` usando `root/SHA256SUMS`.
 pub fn verify_tree(root: &Path) -> Result<VerifyReport> {
     let sums_path = root.join("SHA256SUMS");
-    let sums_metadata = fs::symlink_metadata(&sums_path).map_err(|err| {
-        Error::Invalid(format!(
-            "no se puede inspeccionar {}: {err}",
-            sums_path.display()
-        ))
-    })?;
+    let sums_metadata = fs::symlink_metadata(&sums_path)
+        .map_err(|err| Error::Invalid(format!("cannot inspect {}: {err}", sums_path.display())))?;
     if !sums_metadata.file_type().is_file() {
         return Err(Error::Invalid(format!(
-            "{}: SHA256SUMS debe ser un archivo normal, no un enlace",
+            "{}: SHA256SUMS must be a regular file, not a link",
             sums_path.display()
         )));
     }
-    let text = fs::read_to_string(&sums_path).map_err(|err| {
-        Error::Invalid(format!("no se puede leer {}: {err}", sums_path.display()))
-    })?;
+    let text = fs::read_to_string(&sums_path)
+        .map_err(|err| Error::Invalid(format!("cannot read {}: {err}", sums_path.display())))?;
     let entries = parse_sha256sums(&text)?;
 
     let manifest_path = root.join("manifest.json");
@@ -120,7 +115,7 @@ pub fn verify_tree(root: &Path) -> Result<VerifyReport> {
         if !valid {
             report
                 .invalid
-                .push("manifest.json: formato, schema o conteos inválidos".into());
+                .push("manifest.json: invalid format, schema, or counts".into());
         }
     }
     let expected: HashSet<String> = entries
@@ -133,14 +128,14 @@ pub fn verify_tree(root: &Path) -> Result<VerifyReport> {
         let Some(relative) = safe_relative(&entry.path) else {
             report
                 .invalid
-                .push(format!("{}: ruta no permitida", entry.path));
+                .push(format!("{}: path not allowed", entry.path));
             continue;
         };
         let full = root.join(&relative);
         match has_symlink_component(root, &relative) {
             Ok(true) => {
                 report.invalid.push(format!(
-                    "{}: la ruta atraviesa un enlace simbólico",
+                    "{}: the path traverses a symbolic link",
                     entry.path
                 ));
                 continue;
@@ -166,7 +161,7 @@ pub fn verify_tree(root: &Path) -> Result<VerifyReport> {
         if !metadata.file_type().is_file() {
             report
                 .invalid
-                .push(format!("{}: no es un archivo normal", entry.path));
+                .push(format!("{}: not a regular file", entry.path));
             continue;
         }
 
@@ -215,7 +210,7 @@ pub fn verify_tree(root: &Path) -> Result<VerifyReport> {
                 report.manifest_ok = Some(false);
                 report
                     .invalid
-                    .push("manifest.json: el tamaño de exefs/main no coincide".into());
+                    .push("manifest.json: exefs/main size does not match".into());
             }
         }
     }
@@ -233,28 +228,28 @@ pub fn parse_sha256sums(text: &str) -> Result<Vec<VerifyEntry>> {
         }
         let number = line_no + 1;
         if line.len() < HASH_HEX_LEN + 3 {
-            return Err(invalid_line(number, "línea demasiado corta"));
+            return Err(invalid_line(number, "line too short"));
         }
         let bytes = line.as_bytes();
         let hash_bytes = &bytes[..HASH_HEX_LEN];
         if !hash_bytes.iter().all(u8::is_ascii_hexdigit) {
-            return Err(invalid_line(number, "el hash no es hexadecimal"));
+            return Err(invalid_line(number, "the hash is not hexadecimal"));
         }
         let hash = std::str::from_utf8(hash_bytes)
-            .map_err(|_| invalid_line(number, "el hash no es hexadecimal"))?;
+            .map_err(|_| invalid_line(number, "the hash is not hexadecimal"))?;
         if !matches!(
             bytes.get(HASH_HEX_LEN..HASH_HEX_LEN + 2),
             Some(b"  " | b" *")
         ) {
-            return Err(invalid_line(number, "faltan los dos espacios separadores"));
+            return Err(invalid_line(number, "missing the two separator spaces"));
         }
         // El separador ASCII garantiza una frontera UTF-8 en el byte 66.
         let path = &line[HASH_HEX_LEN + 2..];
         if path.is_empty() {
-            return Err(invalid_line(number, "ruta vacía"));
+            return Err(invalid_line(number, "empty path"));
         }
         if safe_relative(path).is_none() {
-            return Err(invalid_line(number, "ruta no permitida"));
+            return Err(invalid_line(number, "path not allowed"));
         }
         entries.push(VerifyEntry {
             path: path.to_string(),
@@ -263,15 +258,13 @@ pub fn parse_sha256sums(text: &str) -> Result<Vec<VerifyEntry>> {
     }
 
     if entries.is_empty() {
-        return Err(Error::Invalid(
-            "SHA256SUMS no contiene ninguna entrada".into(),
-        ));
+        return Err(Error::Invalid("SHA256SUMS contains no entries".into()));
     }
     Ok(entries)
 }
 
 fn invalid_line(line: usize, reason: &str) -> Error {
-    Error::Invalid(format!("SHA256SUMS línea {line}: {reason}"))
+    Error::Invalid(format!("SHA256SUMS line {line}: {reason}"))
 }
 
 /// Ruta relativa segura: sin componentes vacíos, `.`, `..`, separadores de

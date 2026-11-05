@@ -35,7 +35,7 @@ pub(crate) fn cmd_dump(
 ) -> Result<(), Error> {
     if files.is_empty() || files.len() > 2 {
         return Err(Error::Invalid(
-            "dump acepta uno o dos contenedores: la base y, opcionalmente, su update".into(),
+            "dump accepts one or two containers: the base and, optionally, its update".into(),
         ));
     }
     let keys = load_keys_lenient(explicit_keys).ok_or(Error::MissingHeaderKey)?;
@@ -51,7 +51,7 @@ pub(crate) fn cmd_dump(
     }
     if titles.len() > 1 && !opts.tree {
         return Err(Error::Invalid(format!(
-            "el contenedor combina {} títulos (base y DLC); añade --tree para extraerlos todos",
+            "the container combines {} titles (base and DLC); add --tree to extract them all",
             titles.len()
         )));
     }
@@ -191,7 +191,7 @@ impl DumpReport {
             .map(|v| format!("v{v} · "))
             .unwrap_or_default();
         println!(
-            "  título     {} · {}meta v{} · {}",
+            "  title      {} · {}meta v{} · {}",
             self.title_id,
             visible,
             self.version_raw,
@@ -209,44 +209,44 @@ impl DumpReport {
             );
         }
         println!(
-            "  programa   {}  [clave OK ({})]",
+            "  program    {}  [key OK ({})]",
             short_id(&self.program_name),
             self.key_origin.label()
         );
 
         if let Some(exefs) = &self.exefs {
             println!(
-                "  exefs      {} archivos · {}",
+                "  exefs      {} files · {}",
                 exefs.entries.len(),
                 human_size(exefs.bytes)
             );
         }
         if let Some(romfs) = &self.romfs {
             let origin = if self.merged {
-                " · fusionado con la base"
+                " · merged with the base"
             } else {
                 ""
             };
             println!(
-                "  romfs      {} archivos · {} · {} directorios{origin}",
+                "  romfs      {} files · {} · {} directories{origin}",
                 romfs.files,
                 human_size(romfs.bytes),
                 romfs.dirs
             );
         }
         if self.dry_run {
-            println!("  plan       sin escribir (--dry-run)");
+            println!("  plan       no writes (--dry-run)");
         } else {
-            println!("  salida     {}", self.out_dir.display());
+            println!("  output     {}", self.out_dir.display());
             if let Some(count) = self.checksums {
-                println!("  SHA256SUMS {count} entradas");
+                println!("  SHA256SUMS {count} entries");
             }
             if self.elapsed_ms > 0 {
-                println!("  duración   {} ms", self.elapsed_ms);
+                println!("  duration   {} ms", self.elapsed_ms);
             }
         }
         for warning in &self.warnings {
-            println!("  aviso      {warning}");
+            println!("  warning    {warning}");
         }
     }
 }
@@ -275,7 +275,7 @@ pub(crate) fn dump_paths(
                 MetaType::Patch => updates.push(container),
                 other => {
                     return Err(Error::Unsupported(format!(
-                        "tipo de contenido no soportado: {other:?}"
+                        "unsupported content type: {other:?}"
                     )))
                 }
             }
@@ -284,15 +284,13 @@ pub(crate) fn dump_paths(
 
     let mut base = match target {
         Some(id) => bases.into_iter().next().ok_or_else(|| {
-            Error::Invalid(format!(
-                "no se encontró el título {id} en los contenedores indicados"
-            ))
+            Error::Invalid(format!("title {id} was not found in the given containers"))
         })?,
         None => {
             if bases.len() > 1 {
                 return Err(Error::Invalid(
-                    "el contenedor combina varios títulos (base + DLC); \
-                     usa --tree para extraerlos todos"
+                    "the container combines multiple titles (base + DLC); \
+                     use --tree to extract them all"
                         .into(),
                 ));
             }
@@ -308,7 +306,7 @@ pub(crate) fn dump_paths(
     let romfs_available =
         update.as_ref().is_some_and(|u| u.romfs.is_some()) || base.romfs.is_some();
     if opts.romfs_only && !romfs_available {
-        return Err(Error::Invalid("este contenido no tiene romfs".into()));
+        return Err(Error::Invalid("this content has no romfs".into()));
     }
 
     // Datos para la salida. Se copian antes de que los lectores de sección
@@ -372,7 +370,7 @@ pub(crate) fn dump_paths(
         };
         if opts.exefs_only && container.exefs.is_none() {
             return Err(Error::Invalid(
-                "este contenido no tiene exefs (¿es un DLC?)".into(),
+                "this content has no exefs (is it a DLC?)".into(),
             ));
         }
         (
@@ -499,7 +497,7 @@ pub(crate) fn dump_paths(
         written += file.size;
         if written >= next_report {
             eprintln!(
-                "    … {} de {}",
+                "    … {} of {}",
                 human_size(written),
                 human_size(total_bytes)
             );
@@ -656,7 +654,7 @@ fn select_update(
         if selected.is_empty() {
             if version_matches(base, requested) {
                 warnings.push(format!(
-                    "--version {requested}: se extrae la base v{} sin update",
+                    "--version {requested}: extracting base v{} without an update",
                     version_label(base)
                 ));
                 return Ok(None);
@@ -670,7 +668,7 @@ fn select_update(
         let best = selected.pop().unwrap();
         for other in selected {
             warnings.push(format!(
-                "--version {requested}: se ignora el update v{}",
+                "--version {requested}: ignoring update v{}",
                 version_label(&other)
             ));
         }
@@ -684,14 +682,14 @@ fn select_update(
             None => best = Some(candidate),
             Some(current) if version > current.meta_info.cnmt.version => {
                 warnings.push(format!(
-                    "varios updates: se usa v{} en lugar de v{}",
+                    "multiple updates: using v{} instead of v{}",
                     version_label(&candidate),
                     version_label(current)
                 ));
                 best = Some(candidate);
             }
             Some(current) => warnings.push(format!(
-                "varios updates: se ignora v{} en favor de v{}",
+                "multiple updates: ignoring v{} in favor of v{}",
                 version_label(&candidate),
                 version_label(current)
             )),
@@ -705,7 +703,7 @@ fn select_update(
                 .cnmt
                 .application_id()
                 .map(|id| format!("{id:016X}"))
-                .unwrap_or_else(|| "desconocida".into());
+                .unwrap_or_else(|| "unknown".into());
             return Err(Error::BaseMismatch {
                 expected,
                 actual: base.title_id(),

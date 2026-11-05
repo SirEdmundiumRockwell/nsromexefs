@@ -52,10 +52,7 @@ pub(crate) fn cmd_batch(
     opts: DumpOptions,
 ) -> Result<(), Error> {
     if !dir.is_dir() {
-        return Err(Error::Invalid(format!(
-            "{}: no es una carpeta",
-            dir.display()
-        )));
+        return Err(Error::Invalid(format!("{}: not a folder", dir.display())));
     }
     let keys = load_keys_lenient(explicit_keys).ok_or(Error::MissingHeaderKey)?;
     if keys.header_key().is_none() {
@@ -65,7 +62,7 @@ pub(crate) fn cmd_batch(
     let scan = scan_media(dir)?;
     if scan.media.is_empty() {
         return Err(Error::Invalid(format!(
-            "{}: no se encontró ningún .nsp ni .xci",
+            "{}: no .nsp or .xci files found",
             dir.display()
         )));
     }
@@ -97,7 +94,7 @@ pub(crate) fn cmd_batch(
                     } else {
                         lines.push(BatchLine::Skipped {
                             path: path.clone(),
-                            reason: format!("{}: fuera de alcance", probe.meta_type.short_label()),
+                            reason: format!("{}: out of scope", probe.meta_type.short_label()),
                         });
                     }
                 }
@@ -204,13 +201,13 @@ pub(crate) fn cmd_batch(
                     }
                 }
                 BatchLine::Skipped { path, reason } => {
-                    println!("  {:<5} {}  {reason}", "omitido", path.display());
+                    println!("  {:<5} {}  {reason}", "skipped", path.display());
                 }
             }
         }
         println!();
         println!(
-            "lote       {} de {} título(s) · {} error(es) · salida {}",
+            "batch      {} of {} title(s) · {} error(s) · output {}",
             ok,
             ok + failed,
             failed,
@@ -218,7 +215,7 @@ pub(crate) fn cmd_batch(
         );
         if !scan.skipped.is_empty() {
             println!(
-                "  omitidos   {} archivo(s) comprimido(s) (.nsz/.xcz): descomprímelos primero",
+                "  skipped    {} compressed file(s) (.nsz/.xcz): decompress them first",
                 scan.skipped.len()
             );
         }
@@ -319,7 +316,7 @@ fn join_paths(paths: &[PathBuf]) -> String {
 fn error_warnings(error: &Error) -> Vec<String> {
     error
         .hint()
-        .map(|hint| vec![format!("pista: {hint}")])
+        .map(|hint| vec![format!("hint: {hint}")])
         .unwrap_or_default()
 }
 

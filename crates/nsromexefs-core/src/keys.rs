@@ -131,14 +131,14 @@ impl KeySet {
         }
 
         let Some((name, value)) = line.split_once('=') else {
-            self.warn(line_no, origin, "línea sin '='; se ignora");
+            self.warn(line_no, origin, "line without '='; skipped");
             return;
         };
         let name = name.trim();
         let value = value.trim();
 
         if name.is_empty() || value.is_empty() {
-            self.warn(line_no, origin, "nombre o valor vacío; se ignora");
+            self.warn(line_no, origin, "empty name or value; skipped");
             return;
         }
 
@@ -152,7 +152,7 @@ impl KeySet {
         let value: String = value.chars().filter(|c| !c.is_whitespace()).collect();
 
         if !is_hex(&value) {
-            self.warn(line_no, origin, "valor no hexadecimal; se ignora");
+            self.warn(line_no, origin, "non-hexadecimal value; skipped");
             return;
         }
 
@@ -161,7 +161,7 @@ impl KeySet {
             self.warn(
                 line_no,
                 origin,
-                &format!("'{}' tiene 34 hex; se usa 32 (bug de Lockpick)", name),
+                &format!("'{}' has 34 hex digits; using 32 (Lockpick bug)", name),
             );
             &value[..32]
         } else {
@@ -169,7 +169,7 @@ impl KeySet {
         };
 
         if value.len() % 2 != 0 {
-            self.warn(line_no, origin, "longitud hex impar; se ignora");
+            self.warn(line_no, origin, "odd hex length; skipped");
             return;
         }
         if value.len() > MAX_HEX_LEN {
@@ -177,7 +177,7 @@ impl KeySet {
                 line_no,
                 origin,
                 &format!(
-                    "valor de {} bytes (máximo {}); se ignora",
+                    "value of {} bytes (maximum {}); skipped",
                     value.len() / 2,
                     MAX_HEX_LEN / 2
                 ),
@@ -186,7 +186,7 @@ impl KeySet {
         }
 
         let Some(bytes) = hex_to_vec(value) else {
-            self.warn(line_no, origin, "hex inválido; se ignora");
+            self.warn(line_no, origin, "invalid hex; skipped");
             return;
         };
 
@@ -422,7 +422,7 @@ mod tests {
         let set = parse(&text);
         assert!(set.header_key().is_some());
         assert_eq!(set.warnings().len(), 1);
-        assert!(set.warnings()[0].message.contains("sin '='"));
+        assert!(set.warnings()[0].message.contains("without '='"));
     }
 
     #[test]

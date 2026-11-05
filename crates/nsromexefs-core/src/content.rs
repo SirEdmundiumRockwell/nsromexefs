@@ -34,7 +34,7 @@ pub fn read_meta<R: Read + Seek>(
 
     if header.content_type != crate::nca::ContentType::Meta {
         return Err(Error::Invalid(format!(
-            "se esperaba una NCA de metadatos y llegó una de tipo {}",
+            "expected a metadata NCA but received type {}",
             header.content_type.label()
         )));
     }
@@ -44,11 +44,11 @@ pub fn read_meta<R: Read + Seek>(
         .iter()
         .flatten()
         .find(|s| s.partition_type == crate::nca::PartitionType::Pfs0)
-        .ok_or_else(|| Error::Invalid("la NCA de metadatos no tiene sección PFS0".into()))?;
+        .ok_or_else(|| Error::Invalid("the metadata NCA has no PFS0 section".into()))?;
 
     if section.size() > MAX_META_SECTION {
         return Err(Error::Invalid(format!(
-            "sección de metadatos anormalmente grande: {} bytes",
+            "abnormally large metadata section: {} bytes",
             section.size()
         )));
     }
@@ -61,7 +61,7 @@ pub fn read_meta<R: Read + Seek>(
     let pfs0_offset = section.pfs0_offset();
     if pfs0_offset as usize >= section_data.len() {
         return Err(Error::Invalid(format!(
-            "el PFS0 declarado (0x{pfs0_offset:X}) cae fuera de la sección (0x{:X} bytes)",
+            "the declared PFS0 (0x{pfs0_offset:X}) falls outside the section (0x{:X} bytes)",
             section_data.len()
         )));
     }
@@ -73,15 +73,15 @@ pub fn read_meta<R: Read + Seek>(
         .entries
         .iter()
         .find(|e| e.name.to_ascii_lowercase().ends_with(".cnmt"))
-        .ok_or_else(|| Error::Invalid("el PFS0 de metadatos no contiene ningún .cnmt".into()))?;
+        .ok_or_else(|| Error::Invalid("the metadata PFS0 contains no .cnmt".into()))?;
 
     let start = pfs0_offset as usize + entry.offset as usize;
     let end = start
         .checked_add(entry.size as usize)
-        .ok_or_else(|| Error::Invalid("tamaño de CNMT desbordado".into()))?;
+        .ok_or_else(|| Error::Invalid("CNMT size overflow".into()))?;
     if end > section_data.len() {
         return Err(Error::Invalid(
-            "el CNMT declarado cae fuera de la sección".into(),
+            "the declared CNMT falls outside the section".into(),
         ));
     }
 

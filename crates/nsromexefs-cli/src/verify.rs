@@ -15,11 +15,11 @@ use crate::util::human_size;
 /// Devuelve el código de salida: 0 si todo cuadra, 5 si algo falla.
 pub(crate) fn cmd_verify(dir: &Path, strict: bool, json: bool) -> Result<u8, Error> {
     if !dir.exists() {
-        return Err(Error::Invalid(format!("{}: no existe", dir.display())));
+        return Err(Error::Invalid(format!("{}: does not exist", dir.display())));
     }
     if !dir.is_dir() {
         return Err(Error::Invalid(format!(
-            "{}: se esperaba una carpeta con exefs/ y romfs/",
+            "{}: expected a folder with exefs/ and romfs/",
             dir.display()
         )));
     }
@@ -27,7 +27,7 @@ pub(crate) fn cmd_verify(dir: &Path, strict: bool, json: bool) -> Result<u8, Err
     let roots = find_roots(dir)?;
     if roots.is_empty() {
         return Err(Error::Invalid(format!(
-            "{}: no se encontró ningún SHA256SUMS",
+            "{}: no SHA256SUMS found",
             dir.display()
         )));
     }
@@ -80,7 +80,7 @@ fn report_json(report: &VerifyReport, strict: bool) -> serde_json::Value {
 fn print_report(report: &VerifyReport, strict: bool) {
     println!("{}", report.root.display());
     println!(
-        "  verificados {} de {} · {}",
+        "  verified {} of {} · {}",
         report.verified,
         report.listed,
         human_size(report.bytes)
@@ -89,39 +89,39 @@ fn print_report(report: &VerifyReport, strict: bool) {
         Some(true) => println!("  main       NSO0 OK"),
         Some(false) => {
             let suffix = if strict {
-                " · fallo"
+                " · failure"
             } else {
-                " · aviso (usa --strict para que falle)"
+                " · warning (use --strict to fail)"
             };
-            println!("  main       no empieza por NSO0{suffix}");
+            println!("  main       does not start with NSO0{suffix}");
         }
-        None => println!("  main       no existe"),
+        None => println!("  main       does not exist"),
     }
     if let Some(ok) = report.manifest_ok {
         println!(
             "  manifest   {}",
-            if ok { "schema 1 OK" } else { "inválido" }
+            if ok { "schema 1 OK" } else { "invalid" }
         );
     }
 
-    print_list("faltan", &report.missing);
-    print_list("distintos", &report.mismatched);
-    print_list("inválidos", &report.invalid);
+    print_list("missing", &report.missing);
+    print_list("mismatched", &report.mismatched);
+    print_list("invalid", &report.invalid);
     if !report.extra.is_empty() {
         let suffix = if strict {
-            " · fallo"
+            " · failure"
         } else {
-            " · aviso (usa --strict para que falle)"
+            " · warning (use --strict to fail)"
         };
-        println!("  sobran     {} archivo(s){suffix}", report.extra.len());
+        println!("  extra      {} file(s){suffix}", report.extra.len());
         print_items(&report.extra);
     }
 
     let issues = report.issues(strict);
     if issues == 0 {
-        println!("  resultado  OK");
+        println!("  result     OK");
     } else {
-        println!("  resultado  FALLÓ · {issues} problema(s)");
+        println!("  result     FAILED · {issues} issue(s)");
     }
 }
 
@@ -129,7 +129,7 @@ fn print_list(label: &str, items: &[String]) {
     if items.is_empty() {
         return;
     }
-    println!("  {label:<10} {} archivo(s)", items.len());
+    println!("  {label:<10} {} file(s)", items.len());
     print_items(items);
 }
 
@@ -139,7 +139,7 @@ fn print_items(items: &[String]) {
         println!("    {item}");
     }
     if items.len() > LIMIT {
-        println!("    … y {} más", items.len() - LIMIT);
+        println!("    … and {} more", items.len() - LIMIT);
     }
 }
 
