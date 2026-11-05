@@ -260,9 +260,10 @@ import { invoke, isTauri } from '@tauri-apps/api/core';
       const info = await invoke<EngineInfo>('engine_info', { cliPath: cliPath || null });
       engineInfo = info;
       engineProblem = '';
-      if (!info.overridden && cliPath !== info.path) {
+      if (!info.overridden) {
+        // Show the detected engine without turning it into a persisted override.
         cliPath = info.path;
-        localStorage.setItem('cliPath', cliPath);
+        localStorage.removeItem('cliPath');
       }
     } catch (error) {
       engineInfo = null;
