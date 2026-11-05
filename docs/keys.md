@@ -43,4 +43,4 @@ The repository ignores `*.keys`, `prod.keys`, and `title.keys`, but that does no
 what you are about to publish. Keep keys out of synchronized or shared folders and protect them
 like credentials.
 
-See also `nsromexefs keys --help` for the options available in your version.
+See also `nsromexefs keys --help` for the options available in your version. For the project overview, contributing workflow, and security policy, see the [README](../README.md), [CONTRIBUTING.md](../CONTRIBUTING.md), and [SECURITY.md](../SECURITY.md).

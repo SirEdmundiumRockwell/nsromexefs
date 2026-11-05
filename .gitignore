@@ -1,4 +1,4 @@
-# Compilación
+# Build output
 /target
 **/*.rs.bk
 **/node_modules/
@@ -7,12 +7,12 @@ crates/nsromexefs-gui/src-tauri/gen/
 crates/nsromexefs-gui/src-tauri/binaries/*
 !crates/nsromexefs-gui/src-tauri/binaries/.gitkeep
 
-# Extracción: temporales y estado
+# Extraction state and temporary files
 *.nrx-tmp
 *.part
 .nsromexefs-journal
 
-# Claves y contenido de juegos: NUNCA se versionan
+# Keys and game content: never commit
 prod.keys
 title.keys
 *.keys
@@ -22,7 +22,7 @@ title.keys
 *.ncz
 /ROMS Y KEYS PARA TEST/
 
-# Exportaciones de sesión y ruido del sistema
+# Local session exports and OS noise
 /herramientas-para-nswitch---recompilaciones-y-roms.json
 Thumbs.db
 desktop.ini

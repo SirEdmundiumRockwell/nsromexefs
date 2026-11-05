@@ -112,26 +112,25 @@ SOFTWARE.
 
 ---
 
-## Rust dependencies
+## Dependencies
 
-The following libraries are linked into the binary. Their full license texts are distributed with
-each crate and included in the inventory generated with `cargo about` for each release.
+The project uses the following direct dependencies. Transitive dependencies and complete license
+texts are recorded in `Cargo.lock` and `crates/nsromexefs-gui/package-lock.json`; each crate or
+package also ships its own license text.
 
-| Crate | License | Use |
+| Dependency | License | Use |
 |---|---|---|
-| `aes` (RustCrypto) | MIT OR Apache-2.0 | AES-128 block cipher |
-| `ctr` (RustCrypto) | MIT OR Apache-2.0 | CTR |
-| `xts-mode` (RustCrypto) | MIT OR Apache-2.0 | AES-XTS for headers |
-| `sha2` (RustCrypto) | MIT OR Apache-2.0 | SHA-256 |
-| `cipher` (RustCrypto) | MIT OR Apache-2.0 | cipher traits |
-| `clap` | MIT OR Apache-2.0 | CLI |
-| `serde` / `serde_json` | MIT OR Apache-2.0 | manifests and JSON |
-| `thiserror` | MIT OR Apache-2.0 | error types |
-| `rayon` | MIT OR Apache-2.0 | parallelism |
-| `indicatif` | MIT | progress indicators |
-| `tracing` | MIT | logging |
-| `tauri` (v2, GUI) | MIT OR Apache-2.0 | desktop window and bridge to the core |
-| `Svelte` / `Vite` (GUI) | MIT | user interface and frontend build tooling |
+| `aes`, `ctr`, `sha2` (RustCrypto) | MIT OR Apache-2.0 | AES-128, CTR, and SHA-256 |
+| `fs2` | MIT/Apache-2.0 | Cross-platform file locking |
+| `serde` / `serde_json` | MIT OR Apache-2.0 | Manifests and JSON output |
+| `thiserror` | MIT OR Apache-2.0 | Error types |
+| `clap` | MIT OR Apache-2.0 | Command-line interface |
+| `anyhow` | MIT OR Apache-2.0 | CLI error reporting |
+| `tauri` / `tauri-plugin-dialog` | Apache-2.0 OR MIT | Desktop window, bridge, and dialogs |
+| `@tauri-apps/api` / `@tauri-apps/plugin-dialog` | Apache-2.0 OR MIT | Frontend IPC and dialogs |
+| `Svelte` | MIT | User interface |
+| `Vite` | MIT | Frontend build tooling |
+| `TypeScript` | Apache-2.0 | Frontend type checking |
 
 ---
 
