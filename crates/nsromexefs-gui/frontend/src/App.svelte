@@ -76,6 +76,11 @@ import { invoke, isTauri } from '@tauri-apps/api/core';
     URL.revokeObjectURL(url);
   }
 
+  function localizeLogLine(line: string) {
+    if (language === 'es') return line;
+    return line.replace(/^(\s*…\s*)(.+?) de (.+)$/u, '$1$2 of $3');
+  }
+
   function localizeError(value: unknown): string {
     const message = value instanceof Error ? value.message : String(value ?? '');
     if (language === 'es') return message;
@@ -451,7 +456,7 @@ import { invoke, isTauri } from '@tauri-apps/api/core';
               <div class="progress-title"><div><span class="summary-label">{tr('ESTADO', 'STATUS')}</span><h3>{phase === 'running' ? tr('Extrayendo…', 'Extracting…') : phase === 'done' ? tr('Extracción lista', 'Extraction complete') : tr('Revisa el resultado', 'Check the result')}</h3></div><span class:spinning={phase === 'running'} class="progress-symbol">{phase === 'done' ? '✓' : phase === 'running' ? '↻' : '!'}</span></div>
               {#if phase === 'running'}<div class="progress-track"><span></span></div><p class="progress-hint">{tr('El proceso puede tardar varios minutos según el tamaño del RomFS.', 'This may take several minutes depending on the size of the RomFS.')}</p>{/if}
               {#if result}<div class="result-details"><div><span>{tr('Archivos con checksum', 'Checksummed files')}</span><b>{report(result)?.checksums ?? '—'}</b></div><div><span>{tr('Tiempo total', 'Total time')}</span><b>{report(result)?.timings?.total_ms ? `${(report(result).timings.total_ms / 1000).toFixed(1)} s` : '—'}</b></div><div><span>Manifest</span><b>{report(result)?.manifest ? tr('Generado', 'Generated') : '—'}</b></div></div>{/if}
-              {#if logs.length}<div class="log-box">{#each logs as line}<div>{line}</div>{/each}</div>{/if}
+              {#if logs.length}<div class="log-box">{#each logs as line}<div>{localizeLogLine(line)}</div>{/each}</div>{/if}
             </article>
           {/if}
 
