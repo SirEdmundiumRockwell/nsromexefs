@@ -7,62 +7,62 @@ use std::path::PathBuf;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("error de E/S: {0}")]
+    #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
 
-    #[error("formato no soportado: {0}")]
+    #[error("unsupported format: {0}")]
     Unsupported(String),
 
-    #[error("archivo inválido: {0}")]
+    #[error("invalid file: {0}")]
     Invalid(String),
 
-    #[error("falta `header_key` en el keyset (se necesitan 32 bytes)")]
+    #[error("missing `header_key` in the keyset (32 bytes are required)")]
     MissingHeaderKey,
 
-    #[error("falta `titlekek_{revision:02}` (generación de clave declarada: {declared})")]
+    #[error("missing `titlekek_{revision:02}` (declared key generation: {declared})")]
     MissingTitlekek { revision: u8, declared: u8 },
 
-    #[error("falta el titlekey del rights id {rights_id}")]
+    #[error("missing the title key for rights ID {rights_id}")]
     MissingTitlekey { rights_id: String },
 
-    #[error("falta `key_area_key_{bank}_{revision:02}` en el keyset")]
+    #[error("missing `key_area_key_{bank}_{revision:02}` in the keyset")]
     MissingKeyArea { bank: &'static str, revision: u8 },
 
-    #[error("ticket personalizado: el titlekey está cifrado con la clave RSA de una consola")]
+    #[error("personalized ticket: the title key is encrypted with a console RSA key")]
     TicketPersonalized,
 
-    #[error("archivo de claves inválido ({path}): {reason}")]
+    #[error("invalid key file ({path}): {reason}")]
     KeysetInvalid { path: PathBuf, reason: String },
 
-    #[error("ya existe {path}; usa --force para sobrescribir")]
+    #[error("{path} already exists; use --force to overwrite")]
     OutputExists { path: PathBuf },
 
-    #[error("espacio insuficiente en {path}: se necesitan {needed} bytes y hay {available}")]
+    #[error("not enough space at {path}: {needed} bytes required, {available} available")]
     NoSpace {
         path: PathBuf,
         needed: u64,
         available: u64,
     },
 
-    #[error("la verificación falló: {failed} problema(s) en {checked} archivo(s)")]
+    #[error("verification failed: {failed} issue(s) across {checked} file(s)")]
     VerifyFailed { checked: usize, failed: usize },
 
-    #[error("no está disponible la versión {requested} (disponibles: {available})")]
+    #[error("version {requested} is not available (available: {available})")]
     VersionNotFound {
         requested: String,
         available: String,
     },
 
-    #[error("colisión de nombres en el destino: {path}")]
+    #[error("name collision in the destination: {path}")]
     NameCollision { path: String },
 
-    #[error("falta la base: para un update hay que indicar también su contenedor base")]
+    #[error("missing base: an update requires its base container")]
     MissingBase,
 
-    #[error("la base no corresponde al update: el update pertenece a {expected}, pero la base es {actual}")]
+    #[error("the base does not match the update: the update belongs to {expected}, but the base is {actual}")]
     BaseMismatch { expected: String, actual: String },
 
-    #[error("el lote terminó con {failed} error(es) de {total} título(s)")]
+    #[error("the batch finished with {failed} error(s) out of {total} title(s)")]
     BatchFailed {
         failed: usize,
         total: usize,
@@ -99,48 +99,48 @@ impl Error {
     pub fn hint(&self) -> Option<&'static str> {
         match self {
             Error::MissingHeaderKey => {
-                Some("tu prod.keys no incluye header_key; sin ella no se puede leer la cabecera NCA")
+                Some("your prod.keys does not include header_key; the NCA header cannot be read without it")
             }
             Error::MissingTitlekek { .. } => {
-                Some("actualiza tu keyset: falta una generación de claves que esta NCA necesita")
+                Some("update your keyset: this NCA requires a key generation that is missing")
             }
             Error::MissingTitlekey { .. } => Some(
-                "aporta el ticket del contenido o una entrada en title.keys para ese rights id",
+                "provide the content ticket or a title.keys entry for that rights ID",
             ),
             Error::MissingKeyArea { .. } => Some(
-                "tu prod.keys no incluye key_area_key_* para esa revisión; actualízalo",
+                "your prod.keys does not include key_area_key_* for that revision; update it",
             ),
             Error::TicketPersonalized => {
-                Some("los tickets personalizados requieren la clave RSA de la consola que los emitió")
+                Some("personalized tickets require the RSA key of the console that issued them")
             }
             Error::KeysetInvalid { .. } => {
-                Some("revisa el formato: nombre = hex, una clave por línea")
+                Some("check the format: name = hex, one key per line")
             }
             Error::OutputExists { .. } => {
-                Some("añade --force si quieres reemplazar la extracción anterior")
+                Some("add --force to replace the previous extraction")
             }
             Error::NoSpace { .. } => {
-                Some("libera espacio en el volumen de destino o extrae en otro disco")
+                Some("free space on the destination volume or extract to another drive")
             }
             Error::VerifyFailed { .. } => {
-                Some("vuelve a extraer el título o elimina los archivos dañados")
+                Some("extract the title again or remove the damaged files")
             }
             Error::VersionNotFound { .. } => {
-                Some("usa la versión visible (1.1.0), la del CNMT (2.0.0) o el entero (131072)")
+                Some("use the display version (1.1.0), the CNMT version (2.0.0), or the raw integer (131072)")
             }
             Error::NameCollision { .. } => Some(
-                "el RomFS trae dos rutas que Windows no distingue; extrae en otro sistema de archivos",
+                "the RomFS contains two paths that Windows cannot distinguish; extract to another file system",
             ),
             Error::MissingBase => Some(
-                "un update solo contiene parches: indica también el .nsp/.xci base del mismo juego",
+                "an update only contains patches: also provide the base .nsp/.xci for the same game",
             ),
             Error::BaseMismatch { .. } => Some(
-                "comprueba que el update y la base son del mismo juego y región",
+                "check that the update and the base belong to the same game and region",
             ),
             Error::BatchFailed { .. } => {
-                Some("cada título se procesó por separado; revisa las líneas marcadas como error")
+                Some("each title was processed separately; review the lines marked as errors")
             }
-            Error::Unsupported(_) => Some("consulta el alcance soportado en el diseño §2"),
+            Error::Unsupported(_) => Some("see the supported scope in the design document §2"),
             _ => None,
         }
     }

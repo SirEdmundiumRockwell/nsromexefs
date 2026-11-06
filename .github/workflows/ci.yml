@@ -39,6 +39,8 @@ jobs:
         run: |
           npm --prefix crates/nsromexefs-gui run check
           npm --prefix crates/nsromexefs-gui run build
+      - name: Prepare bundled CLI sidecar
+        run: npm --prefix crates/nsromexefs-gui run build:sidecar
       - name: Check formatting
         run: cargo fmt --all -- --check
       - name: Clippy

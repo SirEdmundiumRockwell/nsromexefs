@@ -75,13 +75,13 @@ impl ContentType {
 
     pub fn label(self) -> &'static str {
         match self {
-            ContentType::Program => "programa",
-            ContentType::Meta => "metadatos",
+            ContentType::Program => "program",
+            ContentType::Meta => "metadata",
             ContentType::Control => "control",
             ContentType::Manual => "manual",
-            ContentType::Data => "datos",
-            ContentType::PublicData => "datos públicos",
-            ContentType::Other(_) => "desconocido",
+            ContentType::Data => "data",
+            ContentType::PublicData => "public data",
+            ContentType::Other(_) => "unknown",
         }
     }
 }
@@ -106,7 +106,7 @@ impl PartitionType {
         match self {
             PartitionType::RomFs => "RomFS",
             PartitionType::Pfs0 => "PFS0",
-            PartitionType::Other(_) => "desconocida",
+            PartitionType::Other(_) => "unknown",
         }
     }
 }
@@ -133,11 +133,11 @@ impl EncryptionType {
 
     pub fn label(self) -> &'static str {
         match self {
-            EncryptionType::None => "sin cifrar",
+            EncryptionType::None => "unencrypted",
             EncryptionType::Xts => "AES-XTS",
             EncryptionType::Ctr => "AES-CTR",
-            EncryptionType::Bktr => "BKTR (parche)",
-            EncryptionType::Other(_) => "desconocido",
+            EncryptionType::Bktr => "BKTR (patch)",
+            EncryptionType::Other(_) => "unknown",
         }
     }
 }
@@ -266,9 +266,7 @@ impl NcaHeader {
         header_key: Option<&[u8; 32]>,
     ) -> Result<Self> {
         if available < NCA0_HEADER_LEN as u64 {
-            return Err(Error::Invalid(format!(
-                "NCA demasiado pequeña: {available} bytes"
-            )));
+            return Err(Error::Invalid(format!("NCA too small: {available} bytes")));
         }
 
         let read_len = available.min(NCA3_HEADER_LEN as u64) as usize;
@@ -286,7 +284,7 @@ impl NcaHeader {
             let key = header_key.ok_or(Error::MissingHeaderKey)?;
             if read_len < NCA0_HEADER_LEN {
                 return Err(Error::Invalid(
-                    "no hay bytes suficientes para descifrar la cabecera NCA".into(),
+                    "not enough bytes to decrypt the NCA header".into(),
                 ));
             }
             // NCA3/NCA2: 0xC00 en una sola pasada, sectores de 0x200 desde 0.
@@ -305,14 +303,14 @@ impl NcaHeader {
             b"NCA0" => NcaFormat::Nca0,
             _ => {
                 return Err(Error::Invalid(
-                    "cabecera NCA ilegible tras el descifrado (¿header_key incorrecta?)".into(),
+                    "NCA header unreadable after decryption (wrong header_key?)".into(),
                 ))
             }
         };
 
         if format == NcaFormat::Nca0 {
             return Err(Error::Unsupported(
-                "NCA0 es anterior a Switch 1.0; se leerá en un hito posterior".into(),
+                "NCA0 predates Switch 1.0; it will be read in a later milestone".into(),
             ));
         }
 
@@ -440,9 +438,8 @@ pub fn content_key(
         });
     }
 
-    let bank = KeyBank::from_index(header.kaek_index).ok_or_else(|| {
-        Error::Unsupported(format!("índice de KAEK desconocido: {}", header.kaek_index))
-    })?;
+    let bank = KeyBank::from_index(header.kaek_index)
+        .ok_or_else(|| Error::Unsupported(format!("unknown KAEK index: {}", header.kaek_index)))?;
     let kaek = keys
         .key_area_key(revision, bank)
         .ok_or(Error::MissingKeyArea {
@@ -470,7 +467,7 @@ pub fn read_section<R: Read + Seek>(
 ) -> Result<()> {
     if relative_offset + out.len() as u64 > section.size() {
         return Err(Error::Invalid(format!(
-            "lectura fuera de la sección {}: offset 0x{relative_offset:X} + {} > 0x{:X}",
+            "read outside section {}: offset 0x{relative_offset:X} + {} > 0x{:X}",
             section.index,
             out.len(),
             section.size()
@@ -491,12 +488,12 @@ pub fn read_section<R: Read + Seek>(
         }
         EncryptionType::Xts => {
             return Err(Error::Unsupported(
-                "sección XTS fuera de cabecera: no presente en NCA3".into(),
+                "XTS section outside the header: not present in NCA3".into(),
             ))
         }
         EncryptionType::Other(value) => {
             return Err(Error::Unsupported(format!(
-                "tipo de cifrado de sección desconocido: {value}"
+                "unknown section encryption type: {value}"
             )))
         }
     }

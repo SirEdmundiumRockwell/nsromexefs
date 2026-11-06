@@ -44,19 +44,19 @@ pub(crate) fn cmd_info(
         Some(set) => {
             let rev = set
                 .max_revision()
-                .map(|r| format!("hasta revisión {r}"))
-                .unwrap_or_else(|| "sin revisiones".to_string());
+                .map(|r| format!("up to revision {r}"))
+                .unwrap_or_else(|| "no revisions".to_string());
             println!(
-                "claves: {} archivo(s) · {} claves · {} titlekeys · {rev}",
+                "keys: {} file(s) · {} keys · {} titlekeys · {rev}",
                 set.sources().len(),
                 set.key_count(),
                 set.titlekey_count()
             );
             for warning in set.warnings().iter().take(5) {
-                println!("  aviso: {warning}");
+                println!("  warning: {warning}");
             }
         }
-        None => println!("claves: no se encontró ningún archivo (usa -k prod.keys)"),
+        None => println!("keys: no key file found (use -k prod.keys)"),
     }
     Ok(())
 }
@@ -114,19 +114,19 @@ impl ContainerInfo {
     fn print_human(&self) {
         println!("{}", self.path.display());
         println!(
-            "  {} · {} entradas · {}",
+            "  {} · {} entries · {}",
             self.kind,
             self.entries.len(),
             human_size(self.total_size)
         );
 
         if !self.partitions.is_empty() {
-            println!("  particiones ({})", self.partitions.len());
+            println!("  partitions ({})", self.partitions.len());
             for partition in &self.partitions {
                 let state = if partition.parsed {
                     ""
                 } else {
-                    "  (vacía o no legible)"
+                    "  (empty or unreadable)"
                 };
                 println!(
                     "    {:<9} {:>10}{}",
@@ -149,19 +149,19 @@ impl ContainerInfo {
                 .map(|v| format!("v{v} · "))
                 .unwrap_or_default();
             println!(
-                "  título     {} · {}meta v{} · {}{}",
+                "  title      {} · {}meta v{} · {}{}",
                 title.title_id, visible, title.version_raw, title.meta_type, suffix
             );
             println!(
-                "  claves     crypto_type {} → revisión {} · meta vía {}",
+                "  keys       crypto_type {} → revision {} · meta via {}",
                 title.crypto_type, title.crypto_revision, title.key_origin
             );
-            println!("  contenidos del CNMT");
+            println!("  CNMT contents");
             for content in &title.contents {
                 if !content.present {
                     // Los fragmentos delta viven en otro contenedor por diseño.
                     println!(
-                        "    {:<10} {:>10}  {}  (fuera del contenedor)",
+                        "    {:<10} {:>10}  {}  (outside the container)",
                         content.content_type,
                         human_size(content.size),
                         short_id(&content.name)
@@ -169,9 +169,9 @@ impl ContainerInfo {
                     continue;
                 }
                 let key = match (&content.key, &content.error) {
-                    (Some(origin), _) => format!("clave OK ({origin})"),
-                    (None, Some(err)) => format!("clave: {err}"),
-                    (None, None) => "clave: —".to_string(),
+                    (Some(origin), _) => format!("key OK ({origin})"),
+                    (None, Some(err)) => format!("key: {err}"),
+                    (None, None) => "key: —".to_string(),
                 };
                 let sections = if content.sections.is_empty() {
                     String::new()
@@ -191,7 +191,7 @@ impl ContainerInfo {
         }
 
         for warning in &self.warnings {
-            println!("  aviso      {warning}");
+            println!("  warning    {warning}");
         }
 
         println!("  {} ({})", self.entries_label, self.entries.len());
@@ -252,8 +252,8 @@ fn inspect_container(path: &Path, keys: Option<&KeySet>) -> Result<ContainerInfo
     let opened = open_table(&mut file, path)?;
 
     let entries_label = match opened.kind {
-        ContainerKind::Nsp => "entradas del contenedor",
-        ContainerKind::Xci => "entradas de la partición `secure`",
+        ContainerKind::Nsp => "container entries",
+        ContainerKind::Xci => "`secure` partition entries",
     };
 
     let mut info = ContainerInfo {
@@ -286,20 +286,19 @@ fn inspect_container(path: &Path, keys: Option<&KeySet>) -> Result<ContainerInfo
         }
         for (name, err) in &xci.partition_errors {
             info.warnings
-                .push(format!("partición `{name}` ilegible: {err}"));
+                .push(format!("partition `{name}` unreadable: {err}"));
         }
     }
 
     let Some(keys) = keys else {
-        info.warnings.push(
-            "sin claves: se muestran los archivos pero no el título (usa -k prod.keys)".into(),
-        );
+        info.warnings
+            .push("no keys: files are listed but the title is not (use -k prod.keys)".into());
         return Ok(info);
     };
 
     if keys.header_key().is_none() {
         info.warnings
-            .push("el keyset no incluye header_key: no se puede leer la cabecera NCA".into());
+            .push("the keyset does not include header_key: the NCA header cannot be read".into());
         return Ok(info);
     }
 
@@ -324,7 +323,7 @@ fn inspect_container(path: &Path, keys: Option<&KeySet>) -> Result<ContainerInfo
 fn inspect_table(file: &mut File, table: &EntryTable, keys: &KeySet, info: &mut ContainerInfo) {
     if table.meta_entries().next().is_none() {
         info.warnings
-            .push("no hay ningún .cnmt.nca: no se puede identificar el título".into());
+            .push("no .cnmt.nca found: the title cannot be identified".into());
         return;
     }
 
@@ -423,7 +422,7 @@ fn inspect_content(
                     name: entry.name.clone(),
                     size: entry.size,
                     content_type: content_type_label(content_type),
-                    nca_type: "cabecera ilegible".into(),
+                    nca_type: "unreadable header".into(),
                     sections: Vec::new(),
                     key: None,
                     error: Some(format!("{} [{}]", err, err.code())),
@@ -493,8 +492,8 @@ fn content_type_label(value: u8) -> &'static str {
     // `nn::ncm::ContentType`, no confundir con el `ContentType` de la NCA.
     match value {
         0 => "meta",
-        1 => "programa",
-        2 => "datos",
+        1 => "program",
+        2 => "data",
         3 => "control",
         4 => "html",
         5 => "legal",

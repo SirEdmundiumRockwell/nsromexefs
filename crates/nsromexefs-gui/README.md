@@ -1,39 +1,62 @@
-# GUI de nsromexefs
+# nsromexefs Desktop GUI
 
-Aplicación de escritorio en Tauri 2 + Svelte 5. Este primer corte permite seleccionar uno o dos
-NSP/XCI, validar claves, revisar el plan de `--dry-run`, extraer con opciones de árbol/reanudación
-y ver los eventos y el resultado. La GUI delega las operaciones al ejecutable CLI; no contiene
-lógica independiente de parsing ni extracción.
+The desktop app is built with Tauri 2 and Svelte 5. It provides a graphical workflow for selecting NSP/XCI inputs, validating key files, reviewing a dry-run plan, starting or resuming extraction, and viewing logs and results. Extraction is delegated to the `nsromexefs` CLI; the GUI does not implement a separate parser or extraction engine.
 
-## Requisitos de desarrollo
+The interface supports English and Spanish. Use the language control in the top bar; your selection is saved locally in the app.
 
-- Node.js 22 y npm.
-- Rust 1.90 o posterior para Tauri (MSVC en Windows). El motor CLI/core conserva MSRV 1.82.
-- En Windows: Visual Studio Build Tools con C++ y WebView2 Runtime.
-- En Linux: dependencias Tauri/WebKitGTK documentadas en la guía oficial de Tauri 2.
+**Appearance:** Settings offers four color palettes and four font styles, saved on the device. The default is *Classic Red and Cream* with the *Rounded* font.
 
-## Ejecutar en desarrollo
+**Diagnostics:** the Events tab keeps a local log of recent actions, warnings, and errors (up to 250 entries). Personal paths and key-file names are redacted, and the log can be downloaded or cleared.
 
-Desde esta carpeta:
+## Requirements
+
+- Node.js 22 or newer and npm.
+- Rust 1.90 or newer for Tauri (MSVC toolchain on Windows). The CLI/core have an MSRV of Rust 1.82.
+- Windows: Visual Studio Build Tools with C++ and the WebView2 Runtime.
+- Linux: Tauri 2 system dependencies, including WebKitGTK. See the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/).
+
+## Run in development
+
+From this directory:
 
 ```console
 npm ci
+npm run build:sidecar
 npm run check
 npm run tauri -- dev
 ```
 
-La GUI intenta localizar `nsromexefs` junto a su ejecutable o en los directorios `target/debug`
-y `target/release` de los directorios superiores. Si no aparece, abre **Ajustes** y selecciona el
-binario CLI compilado con `cargo build --release -p nsromexefs-cli`.
+`build:sidecar` compiles `nsromexefs-cli` in release mode and copies it to `src-tauri/binaries/` with the host target triple, which Tauri requires for the bundled engine. Run it again after changing the CLI. The GUI also finds local `target/debug` and `target/release` builds during development.
 
-Para compilar el frontend sin abrir la ventana:
+To preview only the frontend in a browser (native file dialogs and extraction require the desktop app):
+
+```console
+npm run dev
+```
+
+The GUI searches for `nsromexefs` beside its executable and in parent `target/debug` and `target/release` directories. Release builds bundle the CLI as a Tauri sidecar, so the installed app finds its engine automatically. In development, build the workspace first if needed:
+
+```console
+cargo build --release -p nsromexefs-cli
+```
+
+To build only the frontend or check its Svelte/TypeScript diagnostics:
 
 ```console
 npm run build
+npm run check
 ```
 
-## Estado
+## Build the installer
 
-La GUI está en desarrollo y aún no forma parte de los paquetes de la release v0.1.0. El primer
-corte no incluye extracción por lotes, selección de idioma, preferencias de tema ni instaladores
-que empaqueten automáticamente GUI + CLI.
+`npm run tauri -- build` runs the frontend build and `npm run build:sidecar` through `beforeBuildCommand`, then writes the installer to the workspace `target/release/bundle` directory. The sidecar (`src-tauri/binaries/nsromexefs-<target-triple>`) is generated during the build and is not committed. Users do not need Rust or a separate CLI after installing.
+
+The optional CLI path in **Settings** remains available for development or for using an alternative engine build.
+
+### Windows Smart App Control
+
+The generated installers and executables are not code-signed. Windows Smart App Control may block them. If that happens, confirm the file came from your own build or a trusted release and verify its SHA-256 checksum. You can turn off Smart App Control under **Windows Security → App & browser control → Smart App Control**; Microsoft only allows turning it back on after a clean install or reset of Windows. Only disable it for files you trust. Code signing is not currently configured.
+
+## Project status and credits
+
+The GUI is under active development. It shares the `nsromexefs` extraction engine, which is bundled as a sidecar in installers; prebuilt GUI installers are not yet published. This project was created with assistance from AI tools; the maintainer reviews and maintains the code. See the repository's [third-party notices](../../THIRD-PARTY-NOTICES.md) for attribution and license information.

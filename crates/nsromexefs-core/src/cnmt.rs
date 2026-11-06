@@ -41,8 +41,8 @@ impl MetaType {
             MetaType::Patch => "update (Patch)",
             MetaType::AddOnContent => "DLC (AddOnContent)",
             MetaType::Delta => "delta",
-            MetaType::DataPatch => "parche de datos",
-            MetaType::Other(_) => "desconocido",
+            MetaType::DataPatch => "data patch",
+            MetaType::Other(_) => "unknown",
         }
     }
 
@@ -91,7 +91,7 @@ impl Cnmt {
     pub fn parse(data: &[u8]) -> Result<Self> {
         if data.len() < HEADER_LEN {
             return Err(Error::Invalid(format!(
-                "CNMT truncado: {} bytes",
+                "truncated CNMT: {} bytes",
                 data.len()
             )));
         }
@@ -107,17 +107,17 @@ impl Cnmt {
 
         let contents_start = HEADER_LEN
             .checked_add(extended_len)
-            .ok_or_else(|| Error::Invalid("tamaño de cabecera extendida desbordado".into()))?;
+            .ok_or_else(|| Error::Invalid("extended header size overflow".into()))?;
         let contents_end = contents_start
             .checked_add(content_count * CONTENT_INFO_LEN)
-            .ok_or_else(|| Error::Invalid("lista de contenidos desbordada".into()))?;
+            .ok_or_else(|| Error::Invalid("content list overflow".into()))?;
         let meta_end = contents_end
             .checked_add(content_meta_count * CONTENT_META_INFO_LEN)
-            .ok_or_else(|| Error::Invalid("lista de metadatos desbordada".into()))?;
+            .ok_or_else(|| Error::Invalid("metadata list overflow".into()))?;
 
         if meta_end > data.len() {
             return Err(Error::Invalid(format!(
-                "CNMT declara 0x{meta_end:X} bytes pero solo hay 0x{:X}",
+                "CNMT declares 0x{meta_end:X} bytes but only 0x{:X} are available",
                 data.len()
             )));
         }

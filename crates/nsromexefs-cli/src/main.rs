@@ -25,12 +25,12 @@ use crate::util::{error_json, exit_code, merge_paths};
 #[command(
     name = "nsromexefs",
     version,
-    about = "Extrae exefs y romfs desde NSP/XCI de Nintendo Switch",
+    about = "Extract exefs and romfs from Nintendo Switch NSP/XCI containers",
     long_about = None,
     disable_help_subcommand = true
 )]
 struct Cli {
-    /// Archivos de claves (repetible). Si se omite, se busca prod.keys/title.keys.
+    /// Key files (repeatable). If omitted, prod.keys/title.keys are searched for.
     #[arg(short = 'k', long = "keys", global = true, value_name = "FILE")]
     keys: Vec<PathBuf>,
 
@@ -40,102 +40,102 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Muestra el contenido de un NSP/XCI sin extraer nada
+    /// Show the contents of an NSP/XCI without extracting anything
     Info {
-        /// Archivos .nsp o .xci
+        /// .nsp or .xci files
         #[arg(required = true, value_name = "FILE")]
         files: Vec<PathBuf>,
-        /// Salida legible por máquina
+        /// Machine-readable output
         #[arg(long)]
         json: bool,
     },
-    /// Extrae exefs y romfs de un NSP/XCI base, DLC o base + update
+    /// Extract exefs and romfs from a base NSP/XCI, DLC, or base + update
     Dump {
-        /// Archivos .nsp/.xci: la base y, opcionalmente, su update (en cualquier orden)
+        /// .nsp/.xci files: the base and, optionally, its update (in any order)
         #[arg(required = true, value_name = "FILE")]
         files: Vec<PathBuf>,
-        /// Directorio de salida (por defecto ./<title_id>)
+        /// Output directory (defaults to ./<title_id>)
         #[arg(short = 'o', long = "out", value_name = "DIR")]
         out: Option<PathBuf>,
-        /// Organiza la salida como <app_id>/v<versión> (obligatorio en lote)
+        /// Organize output as <app_id>/v<version> (required in batch mode)
         #[arg(long)]
         tree: bool,
-        /// Reanuda una extracción incompleta, verificando hash y tamaño de cada archivo
+        /// Resume an incomplete extraction, verifying each file's hash and size
         #[arg(long, conflicts_with = "dry_run")]
         resume: bool,
-        /// Fuerza una versión (visible 1.1.0, CNMT 2.0.0 o entero 131072)
+        /// Force a version (display 1.1.0, CNMT 2.0.0, or raw integer 131072)
         #[arg(long, value_name = "V")]
         version: Option<String>,
-        /// Extrae solo exefs
+        /// Extract exefs only
         #[arg(long, conflicts_with = "romfs_only")]
         exefs_only: bool,
-        /// Extrae solo romfs
+        /// Extract romfs only
         #[arg(long)]
         romfs_only: bool,
-        /// Analiza y muestra el plan sin escribir nada
+        /// Analyze and show the plan without writing anything
         #[arg(long)]
         dry_run: bool,
-        /// Sobrescribe una extracción anterior
+        /// Overwrite a previous extraction
         #[arg(long)]
         force: bool,
-        /// Lista cada archivo extraído
+        /// List each extracted file
         #[arg(short = 'v', long)]
         verbose: bool,
-        /// Salida legible por máquina
+        /// Machine-readable output
         #[arg(long)]
         json: bool,
     },
-    /// Extrae todos los NSP/XCI de una carpeta, con layout por título/versión
+    /// Extract every NSP/XCI in a folder, organized by title/version
     Batch {
-        /// Carpeta que contiene los .nsp/.xci (se recorre recursivamente)
+        /// Folder containing the .nsp/.xci files (scanned recursively)
         #[arg(value_name = "DIR")]
         dir: PathBuf,
-        /// Carpeta raíz de salida (por defecto ./nsromexefs-out)
+        /// Output root folder (defaults to ./nsromexefs-out)
         #[arg(short = 'o', long = "out", value_name = "DIR")]
         out: Option<PathBuf>,
-        /// Extrae solo exefs
+        /// Extract exefs only
         #[arg(long, conflicts_with = "romfs_only")]
         exefs_only: bool,
-        /// Extrae solo romfs
+        /// Extract romfs only
         #[arg(long)]
         romfs_only: bool,
-        /// Analiza y muestra el plan sin escribir nada
+        /// Analyze and show the plan without writing anything
         #[arg(long)]
         dry_run: bool,
-        /// Sobrescribe extracciones anteriores
+        /// Overwrite previous extractions
         #[arg(long)]
         force: bool,
-        /// Reanuda las extracciones incompletas del lote
+        /// Resume incomplete extractions in the batch
         #[arg(long, conflicts_with = "dry_run")]
         resume: bool,
-        /// Lista cada archivo extraído
+        /// List each extracted file
         #[arg(short = 'v', long)]
         verbose: bool,
-        /// Salida legible por máquina
+        /// Machine-readable output
         #[arg(long)]
         json: bool,
     },
-    /// Verifica un árbol extraído contra su SHA256SUMS
+    /// Verify an extracted tree against its SHA256SUMS
     Verify {
-        /// Árbol con exefs/ y romfs/, o carpeta que contiene varios árboles
+        /// Tree containing exefs/ and romfs/, or a folder with multiple trees
         #[arg(value_name = "DIR")]
         dir: PathBuf,
-        /// Falla también ante archivos sobrantes o un `main` sin NSO0
+        /// Also fail on extra files or a `main` without NSO0
         #[arg(long)]
         strict: bool,
-        /// Salida legible por máquina
+        /// Machine-readable output
         #[arg(long)]
         json: bool,
     },
-    /// Valida y sanea archivos de claves
+    /// Validate and sanitize key files
     Keys {
-        /// (Compatibilidad) valida el keyset; es el comportamiento por defecto
+        /// (Compatibility) validate the keyset; this is the default behavior
         #[arg(long)]
         check: bool,
-        /// Archivos prod.keys / title.keys (si se omiten, se usan los de -k)
+        /// prod.keys / title.keys files (if omitted, the -k files are used)
         #[arg(value_name = "FILE")]
         files: Vec<PathBuf>,
-        /// Salida legible por máquina
+        /// Machine-readable output
         #[arg(long)]
         json: bool,
     },
@@ -158,7 +158,7 @@ fn main() -> ExitCode {
             } else {
                 eprintln!("error [{}]: {err}", err.code());
                 if let Some(hint) = err.hint() {
-                    eprintln!("  pista: {hint}");
+                    eprintln!("  hint: {hint}");
                 }
             }
             ExitCode::from(exit_code(&err))
@@ -259,8 +259,8 @@ fn cmd_keys(files: &[PathBuf], global: &[PathBuf], json: bool) -> Result<(), Err
     let paths = merge_paths(files, global);
     if paths.is_empty() {
         return Err(Error::KeysetInvalid {
-            path: PathBuf::from("(ninguno)"),
-            reason: "no se indicó ningún archivo de claves; usa -k prod.keys".into(),
+            path: PathBuf::from("(none)"),
+            reason: "no key file was provided; use -k prod.keys".into(),
         });
     }
     let set = KeySet::load(&paths)?;
@@ -288,22 +288,22 @@ fn cmd_keys(files: &[PathBuf], global: &[PathBuf], json: bool) -> Result<(), Err
     }
     let max = set.max_revision();
     for (family, present) in set.families() {
-        let status = if present { "OK" } else { "falta" };
+        let status = if present { "OK" } else { "missing" };
         let extra = match (family, max) {
             ("titlekek" | "master_key" | "key_area_key_application", Some(rev)) if present => {
-                format!("  hasta revisión {rev}")
+                format!("  up to revision {rev}")
             }
             _ => String::new(),
         };
         println!("  {:<28} {:<6}{}", family, status, extra);
     }
-    println!("  {:<28} {} entradas", "titlekeys", set.titlekey_count());
-    println!("  {:<28} {}", "claves totales", set.key_count());
+    println!("  {:<28} {} entries", "titlekeys", set.titlekey_count());
+    println!("  {:<28} {}", "total keys", set.key_count());
 
     if set.warnings().is_empty() {
-        println!("  avisos: ninguno");
+        println!("  warnings: none");
     } else {
-        println!("  avisos:");
+        println!("  warnings:");
         for warning in set.warnings() {
             println!("    {warning}");
         }

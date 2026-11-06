@@ -38,7 +38,7 @@ pub fn ecb_encrypt_block(key: &[u8; 16], block: &mut [u8; 16]) {
 pub fn ecb_decrypt(key: &[u8; 16], data: &mut [u8]) -> Result<()> {
     if data.len() % 16 != 0 {
         return Err(Error::Invalid(
-            "AES-ECB requiere un múltiplo de 16 bytes".into(),
+            "AES-ECB requires a multiple of 16 bytes".into(),
         ));
     }
     let cipher = new_aes(key);

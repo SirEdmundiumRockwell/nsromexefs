@@ -58,13 +58,13 @@ impl Ivfc {
     pub fn parse(data: &[u8]) -> Result<Self> {
         if data.len() < IVFC_HEADER_LEN {
             return Err(Error::Invalid(format!(
-                "cabecera IVFC truncada: {} bytes (se esperaban 0x{IVFC_HEADER_LEN:X})",
+                "truncated IVFC header: {} bytes (expected 0x{IVFC_HEADER_LEN:X})",
                 data.len()
             )));
         }
         if &data[0..4] != IVFC_MAGIC {
             return Err(Error::Invalid(
-                "se esperaba magic IVFC en el superbloque de la sección".into(),
+                "expected IVFC magic in the section superblock".into(),
             ));
         }
 
@@ -74,12 +74,12 @@ impl Ivfc {
 
         if declared_levels == 0 || declared_levels > IVFC_DECLARED_MAX_LEVELS {
             return Err(Error::Invalid(format!(
-                "IVFC declara {declared_levels} niveles (rango conocido 1..={IVFC_DECLARED_MAX_LEVELS})"
+                "IVFC declares {declared_levels} levels (known range 1..={IVFC_DECLARED_MAX_LEVELS})"
             )));
         }
         if master_hash_size != 0x20 {
             return Err(Error::Invalid(format!(
-                "IVFC declara un hash maestro de {master_hash_size} bytes (se esperaban 32)"
+                "IVFC declares a master hash of {master_hash_size} bytes (expected 32)"
             )));
         }
 
@@ -94,7 +94,7 @@ impl Ivfc {
             };
             if level.block_size_log2 > 32 {
                 return Err(Error::Invalid(format!(
-                    "nivel IVFC {i}: tamaño de bloque 2^{} fuera de rango",
+                    "IVFC level {i}: block size 2^{} out of range",
                     level.block_size_log2
                 )));
             }

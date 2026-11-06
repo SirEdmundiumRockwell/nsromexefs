@@ -1,10 +1,12 @@
 # nsromexefs — Diseño técnico
 
+> **English summary:** This is the original technical design document, kept in Spanish. It covers the container model, cryptography, extraction pipeline, CLI, GUI, testing, and release plan. Some implementation details have evolved since it was written; the [README](../README.md), the source code, and [`THIRD-PARTY-NOTICES.md`](../THIRD-PARTY-NOTICES.md) are authoritative. User-facing CLI and core messages are now emitted in English, while the GUI translates them for its Spanish locale. For user-facing documentation, start with the [README](../README.md) and the [key file guide](keys.md).
+
 > **Estado:** v0.1 · diseño cerrado · M0-M6 implementados y validados (NSP y XCI reales)
 > **Versión del documento:** 1.2
 > **Fecha:** 2026-10-27 (rev. de la 1.0 del 2026-10-25)
 > **Autor:** Sir Edmund Rockwell
-> **Licencia:** MIT — ver [`LICENSE`](LICENSE) y [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md)
+> **Licencia:** MIT — ver [`LICENSE`](../LICENSE) y [`THIRD-PARTY-NOTICES.md`](../THIRD-PARTY-NOTICES.md)
 
 Herramienta de línea de comandos que convierte **NSP/XCI** (base, update y DLC) en un árbol
 **`exefs/` + `romfs/`** listo para cualquier proyecto de recompilación o descompilación.
@@ -357,8 +359,8 @@ El mapeo entre lo que se declara en el contenedor y lo que se extrae se especifi
 ```
 nsromexefs-core (biblioteca)          nsromexefs-cli (binario)        nsromexefs-gui (v2)
  ├── container  NSP / XCI (PFS0, HFS0)  ├── clap: comandos y opciones   └── tauri + svelte
- ├── nca        cabecera, secciones     ├── indicatif: progreso
- ├── crypto     XTS, CTR, CTR-EX, ECB   ├── códigos de salida
+ ├── nca        cabecera, secciones     ├── códigos de salida
+ ├── crypto     XTS, CTR, CTR-EX, ECB
  ├── keys       prod.keys, title.keys   └── salida humana / --json
  ├── cnmt       cabecera y contenidos
  ├── fs         PFS0 (exefs), RomFS/IVFC
@@ -367,16 +369,17 @@ nsromexefs-core (biblioteca)          nsromexefs-cli (binario)        nsromexefs
  └── verify     IVFC, conteos, hashes
 ```
 
-Dependencias (Rust):
+Dependencias directas (Rust y GUI):
 
-| Crate | Uso |
+| Crate / paquete | Uso |
 |---|---|
-| `aes`, `ctr`, `xts-mode`, `sha2` | criptografía |
+| `aes`, `ctr`, `sha2` | criptografía |
 | `serde`, `serde_json` | manifest y `--json` |
-| `thiserror` | errores tipados |
-| `rayon` | paralelismo |
-| `clap`, `indicatif` | CLI y progreso |
-| `tracing` | logs |
+| `thiserror`, `anyhow` | errores |
+| `fs2` | bloqueo de archivos |
+| `clap` | CLI |
+| `tauri`, `tauri-plugin-dialog` | ventana, puente y diálogos |
+| `svelte`, `vite`, `typescript` | interfaz y build del frontend |
 
 Reglas de diseño:
 
@@ -697,7 +700,7 @@ independiente y no se desciende dentro de ella.
 
 ### Opciones globales
 
-`--keys` (repetible), `--config <file>`, `--no-color`, `--about`, `--version`.
+`--keys` (repetible), `--help`, `--version`.
 
 ### Códigos de salida
 
@@ -951,7 +954,7 @@ Nunca un "clave incorrecta" genérico.
 
 ### 18.6 Documentación de usuario
 
-La guía práctica (`docs/claves.md`, pendiente) explicará:
+La guía práctica ([`keys.md`](keys.md)) explica:
 
 - De dónde salen legalmente las claves (volcado de la propia consola; nunca se piden a terceros).
 - Qué claves se necesitan para qué (cabecera, secciones, tickets, key area).
@@ -1482,10 +1485,11 @@ nsromexefs/
   Cargo.toml            (workspace)
   crates/
     nsromexefs-core/    lib: todo el motor, sin I/O de terminal
-    nsromexefs-cli/     bin: clap, indicatif, salida humana/JSON
+    nsromexefs-cli/     bin: clap, salida humana/JSON
     nsromexefs-gui/     (v2) tauri
   docs/
-    claves.md           guía de uso y manejo seguro de claves
+    keys.md             guía de uso y manejo seguro de claves
+    design.es.md        este documento
   tests/
     fixtures/           corpus dorado (manifiestos de hash, no el contenido)
 ```
@@ -1541,14 +1545,14 @@ como Apache-2.0. Si en el futuro se necesita protección de patentes, se puede p
 | nstool (jakcron) | MIT | referencia de layout y validación cruzada |
 | libnintendo-hac (jakcron) | MIT | estructuras CNMT y ticket |
 | switchbrew | documentación | formatos públicos |
-| RustCrypto | MIT/Apache-2.0 | `aes`, `ctr`, `xts-mode`, `sha2` |
+| RustCrypto | MIT/Apache-2.0 | `aes`, `ctr`, `sha2` |
 
 Además:
 
 - Cabecera de atribución en los módulos que porten lógica concreta (`crypto/xts.rs`, `bktr.rs`,
   `cnmt.rs`, `ticket.rs`).
-- Pantalla **Acerca de** en la GUI y `--about` en la CLI, mostrando versión, licencia y créditos.
-- `cargo about` (o `cargo-deny`) genera el inventario completo de dependencias para cada release.
+- Pantalla de créditos en **Ajustes** de la GUI, y `--version` / `--help` en la CLI.
+- `Cargo.lock` y `package-lock.json` registran el grafo completo de dependencias.
 
 ### 25.3 Marcas
 
@@ -1582,7 +1586,7 @@ consola acepta (Anexo B).
 
 **Decisión:** el keyset es siempre externo.
 **Motivo:** legalidad y mantenibilidad.
-**Consecuencia:** el usuario debe aportar claves; de ahí §18 y `docs/claves.md`.
+**Consecuencia:** el usuario debe aportar claves; de ahí §18 y `keys.md`.
 
 ### ADR-05 — Salida plana por defecto
 

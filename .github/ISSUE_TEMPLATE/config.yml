@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/SirEdmundiumRockwell/nsromexefs/security/advisories/new
+    about: Report vulnerabilities privately. Do not open a public issue.
+  - name: Key file guide
+    url: https://github.com/SirEdmundiumRockwell/nsromexefs/blob/main/docs/keys.md
+    about: Learn which key files are needed and how to handle them safely.

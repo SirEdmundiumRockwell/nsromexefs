@@ -67,7 +67,7 @@ impl Hfs0 {
             .is_none_or(|end| end > file_len)
         {
             return Err(Error::Invalid(format!(
-                "el HFS0 en 0x{base:X} queda fuera del contenedor (0x{file_len:X})"
+                "the HFS0 at 0x{base:X} falls outside the container (0x{file_len:X})"
             )));
         }
 
@@ -75,9 +75,7 @@ impl Hfs0 {
         let mut header = [0u8; HEADER_SIZE as usize];
         reader.read_exact(&mut header)?;
         if &header[0..4] != HFS0_MAGIC {
-            return Err(Error::Invalid(format!(
-                "se esperaba magic HFS0 en 0x{base:X}"
-            )));
+            return Err(Error::Invalid(format!("expected HFS0 magic at 0x{base:X}")));
         }
 
         let num_files = u32::from_le_bytes(header[4..8].try_into().unwrap());
@@ -85,12 +83,12 @@ impl Hfs0 {
 
         if num_files > MAX_FILES {
             return Err(Error::Invalid(format!(
-                "HFS0 declara {num_files} archivos (máximo {MAX_FILES})"
+                "HFS0 declares {num_files} files (maximum {MAX_FILES})"
             )));
         }
         if string_table_size > MAX_STRING_TABLE {
             return Err(Error::Invalid(format!(
-                "tabla de nombres HFS0 de {string_table_size} bytes (máximo {MAX_STRING_TABLE})"
+                "HFS0 name table of {string_table_size} bytes (maximum {MAX_STRING_TABLE})"
             )));
         }
 
@@ -98,13 +96,13 @@ impl Hfs0 {
         let header_size = HEADER_SIZE
             .checked_add(table_size)
             .and_then(|v| v.checked_add(u64::from(string_table_size)))
-            .ok_or_else(|| Error::Invalid("tamaño de cabecera HFS0 desbordado".into()))?;
+            .ok_or_else(|| Error::Invalid("HFS0 header size overflow".into()))?;
         let data_offset = base
             .checked_add(header_size)
-            .ok_or_else(|| Error::Invalid("offset de datos HFS0 desbordado".into()))?;
+            .ok_or_else(|| Error::Invalid("HFS0 data offset overflow".into()))?;
         if data_offset > file_len {
             return Err(Error::Invalid(format!(
-                "la cabecera HFS0 termina en 0x{data_offset:X}, más allá del contenedor (0x{file_len:X})"
+                "the HFS0 header ends at 0x{data_offset:X}, beyond the container (0x{file_len:X})"
             )));
         }
 
@@ -123,19 +121,18 @@ impl Hfs0 {
             let mut hash = [0u8; 0x20];
             hash.copy_from_slice(&raw[32..64]);
 
-            let name = read_c_string(&names, name_offset).ok_or_else(|| {
-                Error::Invalid(format!("entrada HFS0 {i}: nombre fuera de la tabla"))
-            })?;
+            let name = read_c_string(&names, name_offset)
+                .ok_or_else(|| Error::Invalid(format!("HFS0 entry {i}: name outside the table")))?;
 
-            let absolute = data_offset.checked_add(offset).ok_or_else(|| {
-                Error::Invalid(format!("entrada HFS0 '{name}': offset desbordado"))
-            })?;
-            let end = absolute.checked_add(size).ok_or_else(|| {
-                Error::Invalid(format!("entrada HFS0 '{name}': tamaño desbordado"))
-            })?;
+            let absolute = data_offset
+                .checked_add(offset)
+                .ok_or_else(|| Error::Invalid(format!("HFS0 entry '{name}': offset overflow")))?;
+            let end = absolute
+                .checked_add(size)
+                .ok_or_else(|| Error::Invalid(format!("HFS0 entry '{name}': size overflow")))?;
             if end > file_len {
                 return Err(Error::Invalid(format!(
-                    "entrada HFS0 '{name}': rango 0x{absolute:X}..0x{end:X} fuera del contenedor (0x{file_len:X})"
+                    "HFS0 entry '{name}': range 0x{absolute:X}..0x{end:X} outside the container (0x{file_len:X})"
                 )));
             }
 

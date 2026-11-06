@@ -16,9 +16,22 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.ref }}
+      - name: Install Tauri Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev librsvg2-dev
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+      - name: Install GUI dependencies
+        run: npm ci --prefix crates/nsromexefs-gui
+      - name: Build GUI frontend
+        run: npm --prefix crates/nsromexefs-gui run build
+      - name: Prepare bundled CLI sidecar
+        run: node crates/nsromexefs-gui/scripts/prepare-sidecar.mjs
       - name: Match tag to workspace version
         shell: bash
         run: |
@@ -74,8 +87,10 @@ jobs:
           $stage = Join-Path $env:RUNNER_TEMP 'nsromexefs-dist'
           New-Item -ItemType Directory -Force $stage | Out-Null
           Copy-Item "target/${{ matrix.target }}/release/nsromexefs.exe" $stage
-          Copy-Item README.md, LICENSE, THIRD-PARTY-NOTICES.md $stage
-          Copy-Item docs/claves.md $stage
+          Copy-Item README.md, LICENSE, THIRD-PARTY-NOTICES.md, CONTRIBUTING.md, SECURITY.md $stage
+          Copy-Item docs -Destination $stage -Recurse
+          New-Item -ItemType Directory -Force (Join-Path $stage 'crates/nsromexefs-gui') | Out-Null
+          Copy-Item 'crates/nsromexefs-gui/README.md' (Join-Path $stage 'crates/nsromexefs-gui/README.md')
           Compress-Archive -Path "$stage/*" -DestinationPath "${{ matrix.archive }}"
       - name: Package Unix tarball
         if: runner.os != 'Windows'
@@ -83,8 +98,10 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/nsromexefs-dist"
           cp "target/${{ matrix.target }}/release/nsromexefs" "$RUNNER_TEMP/nsromexefs-dist/"
-          cp README.md LICENSE THIRD-PARTY-NOTICES.md "$RUNNER_TEMP/nsromexefs-dist/"
-          cp docs/claves.md "$RUNNER_TEMP/nsromexefs-dist/"
+          cp README.md LICENSE THIRD-PARTY-NOTICES.md CONTRIBUTING.md SECURITY.md "$RUNNER_TEMP/nsromexefs-dist/"
+          cp -r docs "$RUNNER_TEMP/nsromexefs-dist/"
+          mkdir -p "$RUNNER_TEMP/nsromexefs-dist/crates/nsromexefs-gui"
+          cp crates/nsromexefs-gui/README.md "$RUNNER_TEMP/nsromexefs-dist/crates/nsromexefs-gui/"
           tar -czf "${{ matrix.archive }}" -C "$RUNNER_TEMP/nsromexefs-dist" .
       - uses: actions/upload-artifact@v4
         with:

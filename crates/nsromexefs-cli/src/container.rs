@@ -131,7 +131,7 @@ pub(crate) fn open_table(file: &mut File, path: &Path) -> Result<OpenedTable, Er
     let total_size = file.metadata()?.len();
     if total_size < 4 {
         return Err(Error::Unsupported(format!(
-            "{}: archivo demasiado pequeño para ser un contenedor",
+            "{}: file too small to be a container",
             path.display()
         )));
     }
@@ -151,7 +151,7 @@ pub(crate) fn open_table(file: &mut File, path: &Path) -> Result<OpenedTable, Er
 
     if !looks_like_xci(file)? {
         return Err(Error::Unsupported(format!(
-            "{}: no es un NSP ni un XCI reconocible",
+            "{}: not a recognizable NSP or XCI",
             path.display()
         )));
     }
@@ -159,7 +159,7 @@ pub(crate) fn open_table(file: &mut File, path: &Path) -> Result<OpenedTable, Er
     let xci = Xci::read(file, total_size)?;
     let secure = xci.secure().ok_or_else(|| {
         Error::Invalid(format!(
-            "{}: el XCI no tiene una partición `secure` legible",
+            "{}: the XCI has no readable `secure` partition",
             path.display()
         ))
     })?;
@@ -288,7 +288,7 @@ fn probe_table(
 
 fn no_meta_error(path: &Path) -> Error {
     Error::Invalid(format!(
-        "{}: no hay ningún .cnmt.nca: no se puede identificar el título",
+        "{}: no .cnmt.nca found: the title cannot be identified",
         path.display()
     ))
 }
@@ -329,15 +329,12 @@ fn resolve_container(
         .iter()
         .find(|c| c.content_type == 1)
         .ok_or_else(|| {
-            Error::Invalid(format!(
-                "{}: el CNMT no lista ninguna NCA de programa",
-                path.display()
-            ))
+            Error::Invalid(format!("{}: the CNMT lists no program NCA", path.display()))
         })?;
     let id_hex = program.content_id_hex();
     let nca_entry = table.find_nca(&id_hex).ok_or_else(|| {
         Error::Invalid(format!(
-            "{}: la NCA de programa {id_hex} no está en el contenedor",
+            "{}: program NCA {id_hex} is not in the container",
             path.display()
         ))
     })?;
@@ -433,7 +430,7 @@ pub(crate) fn read_tickets(file: &mut File, table: &EntryTable) -> TicketList {
             Err(err) => {
                 return TicketList {
                     list,
-                    err: Some(format!("ticket {} ilegible: {err}", entry.name)),
+                    err: Some(format!("ticket {} unreadable: {err}", entry.name)),
                 }
             }
         }
@@ -506,7 +503,7 @@ pub(crate) fn plain_source(container: &mut Container) -> Result<Box<dyn SectionR
     } = container;
     let section = romfs
         .as_ref()
-        .ok_or_else(|| Error::Invalid("el contenedor no tiene RomFS".into()))?;
+        .ok_or_else(|| Error::Invalid("the container has no RomFS".into()))?;
     Ok(Box::new(PlainSection::new(file, section, content_key)))
 }
 
@@ -524,7 +521,7 @@ pub(crate) fn merged_source<'a>(
         } = &mut *update;
         let section = romfs
             .as_ref()
-            .ok_or_else(|| Error::Invalid("el update no tiene RomFS".into()))?;
+            .ok_or_else(|| Error::Invalid("the update has no RomFS".into()))?;
         PlainSection::new(file, section, content_key)
     };
     let origin = {
@@ -536,7 +533,7 @@ pub(crate) fn merged_source<'a>(
         } = &mut *base;
         let section = romfs
             .as_ref()
-            .ok_or_else(|| Error::Invalid("la base no tiene RomFS".into()))?;
+            .ok_or_else(|| Error::Invalid("the base has no RomFS".into()))?;
         PlainSection::new(file, section, content_key)
     };
     Ok(Box::new(BktrSection::new(patch, origin)?))

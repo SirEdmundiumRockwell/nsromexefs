@@ -41,13 +41,13 @@ impl XciHeader {
     pub fn parse(data: &[u8]) -> Result<Self> {
         if data.len() < HEADER_READ_SIZE {
             return Err(Error::Invalid(format!(
-                "cabecera XCI truncada: {} bytes (mínimo 0x200)",
+                "truncated XCI header: {} bytes (minimum 0x200)",
                 data.len()
             )));
         }
         if &data[0x100..0x104] != XCI_MAGIC {
             return Err(Error::Invalid(
-                "se esperaba magic HEAD en 0x100: no es un XCI".into(),
+                "expected HEAD magic at 0x100: not an XCI".into(),
             ));
         }
 
@@ -86,7 +86,7 @@ impl Xci {
     pub fn read<R: Read + Seek>(reader: &mut R, file_len: u64) -> Result<Self> {
         if file_len < HEADER_READ_SIZE as u64 {
             return Err(Error::Invalid(format!(
-                "archivo demasiado pequeño para ser XCI: {file_len} bytes"
+                "file too small to be an XCI: {file_len} bytes"
             )));
         }
 

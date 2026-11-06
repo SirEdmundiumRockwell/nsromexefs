@@ -36,7 +36,7 @@ pub struct Ticket {
 impl Ticket {
     pub fn parse(data: &[u8]) -> Result<Self> {
         if data.len() < 0x40 {
-            return Err(Error::Invalid("ticket demasiado corto".into()));
+            return Err(Error::Invalid("ticket too short".into()));
         }
 
         let (signature_type, _big_endian) = decode_signature_type(data)?;
@@ -50,7 +50,7 @@ impl Ticket {
             0x010006 => (0x14, 0x28),
             other => {
                 return Err(Error::Invalid(format!(
-                    "ticket con tipo de firma desconocido: 0x{other:06X}"
+                    "ticket with unknown signature type: 0x{other:06X}"
                 )))
             }
         };
@@ -58,7 +58,7 @@ impl Ticket {
         let y = 4 + sig_len + pad;
         if data.len() < y + BODY_MIN {
             return Err(Error::Invalid(format!(
-                "ticket truncado: {} bytes, se esperaban al menos {}",
+                "truncated ticket: {} bytes, expected at least {}",
                 data.len(),
                 y + BODY_MIN
             )));
@@ -129,7 +129,7 @@ fn decode_signature_type(data: &[u8]) -> Result<(u32, bool)> {
         (true, _) => Ok((le, false)),
         (false, true) => Ok((be, true)),
         (false, false) => Err(Error::Invalid(format!(
-            "tipo de firma de ticket no reconocido: 0x{le:08X} / 0x{be:08X}"
+            "unrecognized ticket signature type: 0x{le:08X} / 0x{be:08X}"
         ))),
     }
 }

@@ -105,10 +105,10 @@ impl<R: Read + Seek> SectionRead for PlainSection<'_, R> {
     fn read_raw_at(&mut self, offset: u64, out: &mut [u8]) -> Result<()> {
         let end = offset
             .checked_add(out.len() as u64)
-            .ok_or_else(|| crate::Error::Invalid("lectura de sección desbordada".into()))?;
+            .ok_or_else(|| crate::Error::Invalid("section read overflow".into()))?;
         if end > self.section.size() {
             return Err(crate::Error::Invalid(format!(
-                "lectura 0x{offset:X}..0x{end:X} fuera de la sección {} (0x{:X} bytes)",
+                "read 0x{offset:X}..0x{end:X} outside section {} (0x{:X} bytes)",
                 self.section.index,
                 self.section.size()
             )));

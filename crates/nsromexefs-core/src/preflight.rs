@@ -32,7 +32,7 @@ pub fn required_space(needed: u64) -> u64 {
 pub fn ensure_space(path: &Path, needed: u64) -> Result<()> {
     let probe = existing_ancestor(path).ok_or_else(|| {
         Error::Invalid(format!(
-            "{}: no existe ningún directorio padre donde comprobar el espacio",
+            "{}: no parent directory exists to check available space",
             path.display()
         ))
     })?;
@@ -56,7 +56,7 @@ pub fn ensure_space(path: &Path, needed: u64) -> Result<()> {
 pub fn ensure_output(path: &Path, force: bool) -> Result<()> {
     match fs::symlink_metadata(path) {
         Ok(metadata) if metadata.file_type().is_symlink() => Err(Error::Invalid(format!(
-            "{}: el destino no puede ser un enlace simbólico",
+            "{}: the destination cannot be a symbolic link",
             path.display()
         ))),
         Ok(metadata) if metadata.is_dir() => {
@@ -113,7 +113,7 @@ pub fn ensure_within(base: &Path, path: &Path) -> Result<PathBuf> {
         Ok(path)
     } else {
         Err(Error::Invalid(format!(
-            "{}: la ruta final queda fuera de {}",
+            "{}: the final path falls outside {}",
             path.display(),
             base.display()
         )))

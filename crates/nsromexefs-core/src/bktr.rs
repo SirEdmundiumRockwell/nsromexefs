@@ -66,7 +66,7 @@ impl BktrHeader {
     pub fn parse(data: &[u8]) -> Result<Self> {
         if data.len() < 0x20 {
             return Err(Error::Invalid(
-                "cabecera BKTR truncada (se esperaban 0x20 bytes)".into(),
+                "truncated BKTR header (expected 0x20 bytes)".into(),
             ));
         }
         let header = Self {
@@ -77,12 +77,12 @@ impl BktrHeader {
         };
         if le32(&data[0x10..]) != BKTR_MAGIC {
             return Err(Error::Invalid(
-                "se esperaba el magic \"BKTR\" en la cabecera de tabla".into(),
+                "expected \"BKTR\" magic in the table header".into(),
             ));
         }
         if header.size > MAX_TABLE {
             return Err(Error::Unsupported(format!(
-                "tabla BKTR de {} bytes: demasiado grande",
+                "BKTR table of {} bytes: too large",
                 header.size
             )));
         }
@@ -148,7 +148,7 @@ impl BktrTables {
         let idx = self.relocs.partition_point(|e| e.virt <= virt);
         if idx == 0 {
             return Err(Error::Invalid(format!(
-                "offset virtual 0x{virt:X} no cubierto por la tabla BKTR"
+                "virtual offset 0x{virt:X} is not covered by the BKTR table"
             )));
         }
         let entry = &self.relocs[idx - 1];
@@ -164,7 +164,7 @@ impl BktrTables {
         let idx = self.subsecs.partition_point(|e| e.phys <= phys);
         if idx == 0 {
             return Err(Error::Invalid(format!(
-                "offset físico 0x{phys:X} no cubierto por las subsecciones BKTR"
+                "physical offset 0x{phys:X} is not covered by the BKTR subsections"
             )));
         }
         let entry = &self.subsecs[idx - 1];
@@ -174,15 +174,15 @@ impl BktrTables {
 }
 
 fn parse_relocations(data: &[u8]) -> Result<(Vec<RelocEntry>, u64)> {
-    let (num_buckets, total_size, buckets_at) = parse_block_header(data, "relocalización")?;
+    let (num_buckets, total_size, buckets_at) = parse_block_header(data, "relocations")?;
     let mut out = Vec::new();
 
     for b in 0..num_buckets {
-        let bucket = bucket_slice(data, buckets_at, b, "relocalización")?;
+        let bucket = bucket_slice(data, buckets_at, b, "relocations")?;
         let count = le32(&bucket[0x04..]) as usize;
         if count > RELOC_MAX_ENTRIES {
             return Err(Error::Invalid(format!(
-                "bucket BKTR {b} declara {count} entradas (máximo {RELOC_MAX_ENTRIES})"
+                "BKTR bucket {b} declares {count} entries (maximum {RELOC_MAX_ENTRIES})"
             )));
         }
         for i in 0..count {
@@ -190,7 +190,7 @@ fn parse_relocations(data: &[u8]) -> Result<(Vec<RelocEntry>, u64)> {
             let is_patch = le32(&bucket[at + 0x10..]);
             if is_patch > 1 {
                 return Err(Error::Invalid(format!(
-                    "entrada BKTR con is_patch={is_patch} (solo 0 o 1)"
+                    "BKTR entry with is_patch={is_patch} (only 0 or 1)"
                 )));
             }
             out.push(RelocEntry {
@@ -203,13 +203,11 @@ fn parse_relocations(data: &[u8]) -> Result<(Vec<RelocEntry>, u64)> {
 
     out.sort_by_key(|e| e.virt);
     if out.is_empty() {
-        return Err(Error::Invalid(
-            "la tabla BKTR no tiene relocalizaciones".into(),
-        ));
+        return Err(Error::Invalid("the BKTR table has no relocations".into()));
     }
     if out.iter().any(|e| e.virt >= total_size) {
         return Err(Error::Invalid(
-            "la tabla BKTR apunta fuera de su tamaño virtual".into(),
+            "the BKTR table points outside its virtual size".into(),
         ));
     }
     // Centinela final: garantiza que `relocation_for` siempre encuentra entrada.
@@ -223,15 +221,15 @@ fn parse_relocations(data: &[u8]) -> Result<(Vec<RelocEntry>, u64)> {
 }
 
 fn parse_subsections(data: &[u8]) -> Result<Vec<SubsecEntry>> {
-    let (num_buckets, _total_size, buckets_at) = parse_block_header(data, "subsecciones")?;
+    let (num_buckets, _total_size, buckets_at) = parse_block_header(data, "subsections")?;
     let mut out = Vec::new();
 
     for b in 0..num_buckets {
-        let bucket = bucket_slice(data, buckets_at, b, "subsecciones")?;
+        let bucket = bucket_slice(data, buckets_at, b, "subsections")?;
         let count = le32(&bucket[0x04..]) as usize;
         if count > SUBSEC_MAX_ENTRIES {
             return Err(Error::Invalid(format!(
-                "bucket BKTR {b} declara {count} subsecciones (máximo {SUBSEC_MAX_ENTRIES})"
+                "BKTR bucket {b} declares {count} subsections (maximum {SUBSEC_MAX_ENTRIES})"
             )));
         }
         for i in 0..count {
@@ -244,9 +242,7 @@ fn parse_subsections(data: &[u8]) -> Result<Vec<SubsecEntry>> {
     }
 
     if out.is_empty() {
-        return Err(Error::Invalid(
-            "la tabla de subsecciones BKTR está vacía".into(),
-        ));
+        return Err(Error::Invalid("the BKTR subsection table is empty".into()));
     }
     out.sort_by_key(|e| e.phys);
     Ok(out)
@@ -254,22 +250,22 @@ fn parse_subsections(data: &[u8]) -> Result<Vec<SubsecEntry>> {
 
 fn parse_block_header(data: &[u8], label: &str) -> Result<(usize, u64, usize)> {
     if data.len() < 0x10 {
-        return Err(Error::Invalid(format!("bloque de {label} BKTR truncado")));
+        return Err(Error::Invalid(format!("truncated {label} BKTR block")));
     }
     let num_buckets = le32(&data[0x04..]) as usize;
     if num_buckets == 0 || num_buckets > MAX_BUCKETS {
         return Err(Error::Invalid(format!(
-            "bloque de {label} BKTR con {num_buckets} buckets"
+            "{label} BKTR block with {num_buckets} buckets"
         )));
     }
     let total_size = le64(&data[0x08..]);
     let buckets_at = BUCKETS_AT;
     let needed = buckets_at
         .checked_add(num_buckets * BUCKET_SIZE)
-        .ok_or_else(|| Error::Invalid(format!("tamaño del bloque de {label} desbordado")))?;
+        .ok_or_else(|| Error::Invalid(format!("{label} block size overflow")))?;
     if needed > data.len() {
         return Err(Error::Invalid(format!(
-            "bloque de {label} truncado: se necesitan 0x{needed:X} bytes y hay 0x{:X}",
+            "truncated {label} block: 0x{needed:X} bytes required, 0x{:X} available",
             data.len()
         )));
     }
@@ -284,7 +280,7 @@ fn bucket_slice<'a>(
 ) -> Result<&'a [u8]> {
     let at = buckets_at + index * BUCKET_SIZE;
     data.get(at..at + BUCKET_SIZE)
-        .ok_or_else(|| Error::Invalid(format!("bucket {index} de {label} BKTR fuera de la tabla")))
+        .ok_or_else(|| Error::Invalid(format!("bucket {index} of {label} BKTR outside the table")))
 }
 
 fn push_sentinel(entries: &mut Vec<SubsecEntry>, phys: u64, ctr_val: u32) {
@@ -317,14 +313,14 @@ impl<P: SectionRead, B: SectionRead> BktrSection<P, B> {
         let reloc_end = reloc_header
             .offset
             .checked_add(reloc_header.size)
-            .ok_or_else(|| Error::Invalid("rango de la tabla BKTR desbordado".into()))?;
+            .ok_or_else(|| Error::Invalid("BKTR table range overflow".into()))?;
         let subsec_end = subsec_header
             .offset
             .checked_add(subsec_header.size)
-            .ok_or_else(|| Error::Invalid("rango de la tabla BKTR desbordado".into()))?;
+            .ok_or_else(|| Error::Invalid("BKTR table range overflow".into()))?;
         if reloc_end > patch.size() || subsec_end > patch.size() {
             return Err(Error::Invalid(
-                "las tablas BKTR caen fuera de la sección del update".into(),
+                "the BKTR tables fall outside the update section".into(),
             ));
         }
 
@@ -345,7 +341,7 @@ impl<P: SectionRead, B: SectionRead> BktrSection<P, B> {
         let romfs_end = ivfc
             .fs_offset()
             .checked_add(ivfc.fs_size())
-            .ok_or_else(|| Error::Invalid("rango virtual del RomFS BKTR desbordado".into()))?;
+            .ok_or_else(|| Error::Invalid("BKTR RomFS virtual range overflow".into()))?;
         // La tabla debería cubrir todo el espacio virtual; si no, se toma el
         // mayor de los dos para que las comprobaciones de RomFS no fallen antes
         // de leer.
@@ -376,7 +372,7 @@ impl<P: SectionRead, B: SectionRead> BktrSection<P, B> {
             let n = (out.len() - done).min((end.saturating_sub(p)) as usize);
             if n == 0 {
                 return Err(Error::Invalid(format!(
-                    "subsección BKTR sin avance en 0x{p:X}"
+                    "BKTR subsection without progress at 0x{p:X}"
                 )));
             }
 
@@ -431,10 +427,10 @@ impl<P: SectionRead, B: SectionRead> SectionRead for BktrSection<P, B> {
     fn read_at(&mut self, offset: u64, out: &mut [u8]) -> Result<()> {
         let end = offset
             .checked_add(out.len() as u64)
-            .ok_or_else(|| Error::Invalid("lectura BKTR desbordada".into()))?;
+            .ok_or_else(|| Error::Invalid("BKTR read overflow".into()))?;
         if end > self.virtual_size {
             return Err(Error::Invalid(format!(
-                "lectura BKTR 0x{offset:X}..0x{end:X} fuera del espacio virtual (0x{:X})",
+                "BKTR read 0x{offset:X}..0x{end:X} outside the virtual space (0x{:X})",
                 self.virtual_size
             )));
         }
@@ -445,18 +441,18 @@ impl<P: SectionRead, B: SectionRead> SectionRead for BktrSection<P, B> {
             let n = (out.len() - done).min((reloc_end.saturating_sub(virt)) as usize);
             if n == 0 {
                 return Err(Error::Invalid(format!(
-                    "relocalización BKTR sin avance en 0x{virt:X}"
+                    "BKTR relocation without progress at 0x{virt:X}"
                 )));
             }
 
             let phys = reloc
                 .phys
                 .checked_add(virt - reloc.virt)
-                .ok_or_else(|| Error::Invalid("offset físico BKTR desbordado".into()))?;
+                .ok_or_else(|| Error::Invalid("BKTR physical offset overflow".into()))?;
             if reloc.is_patch {
                 if phys + n as u64 > self.patch.size() {
                     return Err(Error::Invalid(format!(
-                        "bloque BKTR 0x{phys:X}..0x{:X} fuera de la sección del update",
+                        "BKTR block 0x{phys:X}..0x{:X} outside the update section",
                         phys + n as u64
                     )));
                 }
@@ -616,7 +612,7 @@ mod tests {
         fn read_at(&mut self, offset: u64, out: &mut [u8]) -> Result<()> {
             let at = offset as usize;
             if at + out.len() > self.data.len() {
-                return Err(Error::Invalid("lectura fuera del mock".into()));
+                return Err(Error::Invalid("read outside the mock".into()));
             }
             out.copy_from_slice(&self.data[at..at + out.len()]);
             Ok(())
@@ -708,13 +704,13 @@ mod tests {
 
         let mut buf = [0u8; 8];
         merged.read_at(0x100, &mut buf).unwrap();
-        assert_eq!(buf, [0x11; 8], "los bloques no parcheados salen de la base");
+        assert_eq!(buf, [0x11; 8], "unpatched blocks come from the base");
 
         let mut buf = [0u8; 0x20];
         merged.read_at(0x8000, &mut buf).unwrap();
         assert_eq!(
             buf, [0xAA; 0x20],
-            "los bloques parcheados se descifran con CTR-EX"
+            "patched blocks are decrypted with CTR-EX"
         );
 
         // Tramo no alineado a 0x10: ejercita el `skip` del keystream.

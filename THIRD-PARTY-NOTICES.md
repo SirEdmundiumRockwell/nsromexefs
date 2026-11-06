@@ -1,20 +1,20 @@
-# Créditos y licencias de terceros
+# Third-Party Credits and Licenses
 
-`nsromexefs` es una reimplementación de formatos documentados públicamente. Este archivo
-reconoce el trabajo de los proyectos en los que se basa y reproduce las licencias aplicables.
+`nsromexefs` is an independent implementation of publicly documented formats. This file
+acknowledges the projects it draws on and reproduces applicable license texts.
 
-Si eres autor de alguno de estos proyectos y crees que la atribución es incorrecta o incompleta,
-abre un *issue* y se corrige.
+If you are an author of one of these projects and believe an attribution is incorrect or
+incomplete, please open an issue so it can be reviewed.
 
 ---
 
 ## hactool
 
-- **Autor:** SciresM
-- **Repositorio:** https://github.com/SciresM/hactool
-- **Licencia:** ISC
-- **Qué se usa en `nsromexefs`:** estructura de NCA y sus secciones, modo CTR y CTR-EX,
-  interpretación de las tablas BKTR, RomFS/IVFC y cabecera XCI.
+- **Author:** SciresM
+- **Repository:** https://github.com/SciresM/hactool
+- **License:** ISC
+- **Use in `nsromexefs`:** NCA and section structures, CTR and CTR-EX modes, BKTR table
+  interpretation, RomFS/IVFC, and XCI header references.
 
 ```
 ISC License
@@ -38,11 +38,11 @@ OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 ## nstool
 
-- **Autor:** jakcron (Jack)
-- **Repositorio:** https://github.com/jakcron/nstool
-- **Licencia:** MIT
-- **Qué se usa en `nsromexefs`:** referencia de layout de NCAs y validación cruzada de la
-  extracción (el caso de prueba de *Link's Awakening* 1.1.0 se comparó contra nstool 1.9.2).
+- **Author:** jakcron (Jack)
+- **Repository:** https://github.com/jakcron/nstool
+- **License:** MIT
+- **Use in `nsromexefs`:** NCA layout reference and cross-validation of extraction
+  (the *Link's Awakening* 1.1.0 test case was compared against nstool 1.9.2).
 
 ```
 MIT License
@@ -72,11 +72,11 @@ SOFTWARE.
 
 ## libnintendo-hac
 
-- **Autor:** jakcron (Jack)
-- **Repositorio:** https://github.com/jakcron/libnintendo-hac
-- **Licencia:** MIT
-- **Qué se usa en `nsromexefs`:** estructuras del CNMT (`sContentMetaHeader`,
-  `sContentInfo`, `sContentMetaInfo`) y del ticket, verificadas contra el formato real.
+- **Author:** jakcron (Jack)
+- **Repository:** https://github.com/jakcron/libnintendo-hac
+- **License:** MIT
+- **Use in `nsromexefs`:** CNMT structures (`sContentMetaHeader`, `sContentInfo`,
+  `sContentMetaInfo`) and ticket structures, cross-checked against real-world formats.
 
 ```
 MIT License
@@ -106,36 +106,36 @@ SOFTWARE.
 
 ## switchbrew
 
-- **Sitio:** https://switchbrew.org
-- **Uso:** documentación pública de formatos (NCA, CNMT, ticket, RomFS, XCI).
-- No se reproduce texto del wiki; se cita como referencia técnica.
+- **Website:** https://switchbrew.org
+- **Use:** public format documentation (NCA, CNMT, tickets, RomFS, XCI).
+- Wiki text is not reproduced; it is cited as a technical reference.
 
 ---
 
-## Dependencias de Rust
+## Dependencies
 
-Las siguientes bibliotecas se enlazan en el binario. Sus textos completos se distribuyen con cada
-crate y se incluyen en el inventario generado con `cargo about` en cada release.
+The project uses the following direct dependencies. Transitive dependencies and complete license
+texts are recorded in `Cargo.lock` and `crates/nsromexefs-gui/package-lock.json`; each crate or
+package also ships its own license text.
 
-| Crate | Licencia | Uso |
+| Dependency | License | Use |
 |---|---|---|
-| `aes` (RustCrypto) | MIT OR Apache-2.0 | AES-128 en todos los modos |
-| `ctr` (RustCrypto) | MIT OR Apache-2.0 | CTR |
-| `xts-mode` (RustCrypto) | MIT OR Apache-2.0 | AES-XTS para cabeceras |
-| `sha2` (RustCrypto) | MIT OR Apache-2.0 | SHA-256 |
-| `cipher` (RustCrypto) | MIT OR Apache-2.0 | traits de cifrado |
-| `clap` | MIT OR Apache-2.0 | CLI |
-| `serde` / `serde_json` | MIT OR Apache-2.0 | manifest y JSON |
-| `thiserror` | MIT OR Apache-2.0 | errores |
-| `rayon` | MIT OR Apache-2.0 | paralelismo |
-| `indicatif` | MIT | progreso |
-| `tracing` | MIT | logs |
-| `tauri` (v2, GUI) | MIT OR Apache-2.0 | ventana y puente con el núcleo |
+| `aes`, `ctr`, `sha2` (RustCrypto) | MIT OR Apache-2.0 | AES-128, CTR, and SHA-256 |
+| `fs2` | MIT/Apache-2.0 | Cross-platform file locking |
+| `serde` / `serde_json` | MIT OR Apache-2.0 | Manifests and JSON output |
+| `thiserror` | MIT OR Apache-2.0 | Error types |
+| `clap` | MIT OR Apache-2.0 | Command-line interface |
+| `anyhow` | MIT OR Apache-2.0 | CLI error reporting |
+| `tauri` / `tauri-plugin-dialog` | Apache-2.0 OR MIT | Desktop window, bridge, and dialogs |
+| `@tauri-apps/api` / `@tauri-apps/plugin-dialog` | Apache-2.0 OR MIT | Frontend IPC and dialogs |
+| `Svelte` | MIT | User interface |
+| `Vite` | MIT | Frontend build tooling |
+| `TypeScript` | Apache-2.0 | Frontend type checking |
 
 ---
 
-## Marcas
+## Trademarks
 
-Nintendo y Nintendo Switch son marcas de Nintendo Co., Ltd. Este proyecto no está afiliado,
-patrocinado ni respaldado por Nintendo. Los nombres de juegos y consolas se usan únicamente con
-fines descriptivos y de interoperabilidad.
+Nintendo and Nintendo Switch are trademarks of Nintendo Co., Ltd. This project is not affiliated
+with, sponsored, or endorsed by Nintendo. Game and console names are used for descriptive and
+interoperability purposes only.
