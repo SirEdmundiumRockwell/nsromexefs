@@ -168,6 +168,7 @@ npm run tauri dev
 - [GUI development guide](crates/nsromexefs-gui/README.md) — Tauri setup, sidecar builds, and installer packaging.
 - [Technical design](docs/design.es.md) — the original design document (Spanish), covering formats, cryptography, the extraction pipeline, and testing.
 - [Third-party notices and attributions](THIRD-PARTY-NOTICES.md).
+- [Changelog](CHANGELOG.md) — notable changes by release.
 - [Contributing](CONTRIBUTING.md) and [Security](SECURITY.md).
 - [MIT License](LICENSE).
 

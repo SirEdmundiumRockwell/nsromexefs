@@ -7,13 +7,15 @@ rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
+keywords = ["nintendo-switch", "nsp", "xci", "romfs", "exefs"]
+categories = ["command-line-utilities"]
 
 [[bin]]
 name = "nsromexefs"
 path = "src/main.rs"
 
 [dependencies]
-nsromexefs-core = { path = "../nsromexefs-core" }
+nsromexefs-core.workspace = true
 clap.workspace = true
 anyhow.workspace = true
 serde_json = "1"

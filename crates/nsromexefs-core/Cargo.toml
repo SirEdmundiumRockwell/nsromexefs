@@ -7,6 +7,8 @@ rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
+keywords = ["nintendo-switch", "nsp", "xci", "romfs", "exefs"]
+categories = ["parser-implementations", "filesystem"]
 
 [dependencies]
 thiserror.workspace = true
