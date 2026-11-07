@@ -9,7 +9,7 @@
 //! La lógica de XTS está portada de `hactool` (ISC, SciresM); ver
 //! `THIRD-PARTY-NOTICES.md`.
 
-use aes::cipher::{BlockDecrypt, BlockEncrypt, KeyInit};
+use aes::cipher::{BlockCipherDecrypt, BlockCipherEncrypt, KeyInit};
 use aes::Aes128;
 use ctr::cipher::{KeyIvInit, StreamCipher, StreamCipherSeek};
 use ctr::Ctr128BE;
@@ -25,13 +25,13 @@ fn new_aes(key: &[u8; 16]) -> Aes128 {
 /// AES-128-ECB: descifra un bloque de 16 bytes en sitio.
 pub fn ecb_decrypt_block(key: &[u8; 16], block: &mut [u8; 16]) {
     let cipher = new_aes(key);
-    cipher.decrypt_block(aes::Block::from_mut_slice(block));
+    cipher.decrypt_block(block.into());
 }
 
 /// AES-128-ECB: cifra un bloque de 16 bytes en sitio.
 pub fn ecb_encrypt_block(key: &[u8; 16], block: &mut [u8; 16]) {
     let cipher = new_aes(key);
-    cipher.encrypt_block(aes::Block::from_mut_slice(block));
+    cipher.encrypt_block(block.into());
 }
 
 /// AES-128-ECB sobre un buffer completo (múltiplo de 16).
@@ -43,7 +43,7 @@ pub fn ecb_decrypt(key: &[u8; 16], data: &mut [u8]) -> Result<()> {
     }
     let cipher = new_aes(key);
     for chunk in data.chunks_mut(16) {
-        cipher.decrypt_block(aes::Block::from_mut_slice(chunk));
+        cipher.decrypt_block(chunk.try_into().expect("AES block is 16 bytes"));
     }
     Ok(())
 }
@@ -109,7 +109,7 @@ fn xts_process(
         tweak[8..16].copy_from_slice(&(first_sector + i as u64).to_be_bytes());
 
         // T = AES_enc(k2, tweak)
-        tweak_cipher.encrypt_block(aes::Block::from_mut_slice(&mut tweak));
+        tweak_cipher.encrypt_block((&mut tweak).into());
 
         for chunk in sector.chunks_mut(16) {
             let mut tmp = [0u8; 16];
@@ -117,9 +117,9 @@ fn xts_process(
                 tmp[j] = chunk[j] ^ tweak[j];
             }
             if encrypt {
-                data_cipher.encrypt_block(aes::Block::from_mut_slice(&mut tmp));
+                data_cipher.encrypt_block((&mut tmp).into());
             } else {
-                data_cipher.decrypt_block(aes::Block::from_mut_slice(&mut tmp));
+                data_cipher.decrypt_block((&mut tmp).into());
             }
             for j in 0..16 {
                 chunk[j] = tmp[j] ^ tweak[j];
