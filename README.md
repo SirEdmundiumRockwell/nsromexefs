@@ -30,7 +30,7 @@ No game content, keys, or console firmware are included. Everything runs locally
 > [!IMPORTANT]
 > **Development note:** This project was created with the assistance of AI tools. The maintainer reviews, tests, and maintains the code. Third-party software and documentation are credited in [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md).
 
-> **Status:** v0.1.0. The CLI and the desktop GUI share the same extraction engine. Every release includes CLI archives for Windows, Linux, and macOS plus Windows MSI and NSIS installers for the desktop GUI, which bundle the CLI as a sidecar.
+> **Status:** v0.1.1. The CLI and the desktop GUI share the same extraction engine. Every release includes CLI archives for Windows, Linux, and macOS plus Windows MSI and NSIS installers for the desktop GUI, which bundle the CLI as a sidecar.
 
 ## Features
 
