@@ -6,6 +6,7 @@
   <p>
     <a href="https://github.com/SirEdmundiumRockwell/nsromexefs/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/SirEdmundiumRockwell/nsromexefs/actions/workflows/ci.yml/badge.svg?branch=main"></a>
     <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
+    <a href="https://ko-fi.com/siredmundiumrockwell"><img alt="Support on Ko-fi" src="https://img.shields.io/badge/Ko--fi-Support-FF5E5B?logo=ko-fi&logoColor=white"></a>
     <img alt="Rust 1.82+" src="https://img.shields.io/badge/Rust-1.82%2B-orange?logo=rust">
     <img alt="Tauri 2" src="https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri&logoColor=white">
     <img alt="Platforms: Windows, Linux, macOS" src="https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey">
@@ -17,7 +18,8 @@
     <a href="#downloads-and-verification">Downloads</a> ·
     <a href="#build-from-source">Build from source</a> ·
     <a href="#documentation">Documentation</a> ·
-    <a href="#credits">Credits</a>
+    <a href="#credits">Credits</a> ·
+    <a href="#support-the-project">Support</a>
   </p>
 </div>
 
@@ -194,6 +196,18 @@ This project builds on open-source tools, libraries, and publicly documented for
 Their licenses, applicable notices, and the project's direct dependencies are listed in [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md). Rust dependencies are also recorded in `Cargo.lock`.
 
 This project was created with the assistance of AI tools. The maintainer is responsible for reviewing, testing, and maintaining the code. No third-party project is implied to endorse `nsromexefs`.
+
+## Support the project
+
+<p align="center">
+  <a href="https://ko-fi.com/siredmundiumrockwell">
+    <img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Support me on Ko-fi" />
+  </a>
+</p>
+
+`nsromexefs` is free and open source. If it saved you time, made your workflow easier, or you simply enjoyed using it, you can support its development on [Ko-fi](https://ko-fi.com/siredmundiumrockwell). Contributions help with development time and the occasional coffee.
+
+Donations are completely optional and never required to use the project. Thank you for the support! ☕
 
 ## Legal and responsible use
 
