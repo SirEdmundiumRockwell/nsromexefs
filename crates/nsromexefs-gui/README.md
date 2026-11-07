@@ -57,8 +57,8 @@ The optional CLI path in **Settings** remains available for development or for u
 
 ### Windows Smart App Control
 
-The generated installers and executables are not code-signed. Windows Smart App Control may block them. If that happens, confirm the file came from your own build or a trusted release and verify its SHA-256 checksum. You can turn off Smart App Control under **Windows Security → App & browser control → Smart App Control**; Microsoft only allows turning it back on after a clean install or reset of Windows. Only disable it for files you trust. Code signing is not currently configured.
+The generated installers and executables are not code-signed. Windows Smart App Control may block them. If that happens, confirm the file came from your own build or a trusted release and verify its SHA-256 checksum. You can turn off Smart App Control under **Windows Security → App & browser control → Smart App Control**; Microsoft only allows turning it back on after a clean install or reset of Windows. Only disable it for files you trust. This project does not sign its binaries.
 
 ## Project status and credits
 
-The GUI is under active development. It shares the `nsromexefs` extraction engine, which is bundled as a sidecar in installers; prebuilt GUI installers are not yet published. This project was created with assistance from AI tools; the maintainer reviews and maintains the code. See the repository's [third-party notices](../../THIRD-PARTY-NOTICES.md) for attribution and license information.
+The GUI shares the `nsromexefs` extraction engine, which is bundled as a sidecar in the Windows installers. Prebuilt Windows installers are attached to each GitHub release; other platforms build from source. This project was created with assistance from AI tools; the maintainer reviews and maintains the code. See the repository's [third-party notices](../../THIRD-PARTY-NOTICES.md) for attribution and license information.
