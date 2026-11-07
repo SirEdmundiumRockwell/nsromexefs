@@ -94,7 +94,11 @@ fn xts_process(
     sector_size: usize,
     encrypt: bool,
 ) {
-    debug_assert!(sector_size > 0 && sector_size % 16 == 0);
+    // XTS solo está definido para sectores positivos múltiplos del bloque AES.
+    // Ante una llamada inválida no tocamos los datos en vez de entrar en pánico.
+    if sector_size == 0 || sector_size % 16 != 0 {
+        return;
+    }
 
     let mut data_key = [0u8; 16];
     let mut tweak_key = [0u8; 16];
@@ -111,7 +115,9 @@ fn xts_process(
         // T = AES_enc(k2, tweak)
         tweak_cipher.encrypt_block((&mut tweak).into());
 
-        for chunk in sector.chunks_mut(16) {
+        // Si el final del área no es múltiplo de 16, el bloque incompleto se deja
+        // intacto en lugar de indexarlo fuera de rango.
+        for chunk in sector.chunks_exact_mut(16) {
             let mut tmp = [0u8; 16];
             for j in 0..16 {
                 tmp[j] = chunk[j] ^ tweak[j];

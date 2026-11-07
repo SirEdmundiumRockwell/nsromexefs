@@ -282,15 +282,28 @@ impl NcaHeader {
             raw
         } else {
             let key = header_key.ok_or(Error::MissingHeaderKey)?;
-            if read_len < NCA0_HEADER_LEN {
-                return Err(Error::Invalid(
-                    "not enough bytes to decrypt the NCA header".into(),
-                ));
+            // XTS descifra bloques completos de 16 bytes. El header de NCA3/NCA2
+            // son 0xC00 exactos; un tamaño intermedio no es descifrable.
+            if read_len < NCA0_HEADER_LEN || read_len % 16 != 0 {
+                return Err(Error::Invalid(format!(
+                    "truncated encrypted NCA header: {read_len} bytes"
+                )));
             }
             // NCA3/NCA2: 0xC00 en una sola pasada, sectores de 0x200 desde 0.
             crypto::xts_decrypt(key, &mut raw, 0, 0x200);
             raw
         };
+
+        // El header de NCA3/NCA2 mide 0xC00 y contiene las 4 entradas de sección
+        // y sus FS headers. Si el contenedor declara menos, `parse` podría indexar
+        // fuera del buffer al encontrar una sección tardía no vacía.
+        let format = &header[0x200..0x204];
+        if (format == b"NCA3" || format == b"NCA2") && header.len() < NCA3_HEADER_LEN {
+            return Err(Error::Invalid(format!(
+                "truncated NCA header: {} bytes available (0xC00 required)",
+                header.len()
+            )));
+        }
 
         Self::parse(&header, base)
     }
@@ -609,6 +622,42 @@ mod tests {
         let section = nca.sections[0].as_ref().unwrap();
         assert!(section.pfs0_superblock().is_none());
         assert_eq!(section.pfs0_offset(), 0);
+    }
+
+    #[test]
+    fn truncated_plaintext_header_is_rejected() {
+        let mut h = build_header(b"NCA3");
+        h.truncate(NCA0_HEADER_LEN);
+        // Sección 3 no vacía: con solo 0xA00 bytes, `parse` indexaría 0x800..0xC00.
+        h[0x270..0x274].copy_from_slice(&1u32.to_le_bytes());
+
+        let mut cursor = std::io::Cursor::new(h);
+        let err = NcaHeader::read_at(&mut cursor, 0, NCA0_HEADER_LEN as u64, None).unwrap_err();
+        assert_eq!(err.code(), "E_LAYOUT_UNEXPECTED");
+    }
+
+    #[test]
+    fn truncated_encrypted_header_is_rejected() {
+        let key = [0x5Au8; 32];
+        let mut enc = build_header(b"NCA3");
+        enc.truncate(NCA0_HEADER_LEN);
+        crypto::xts_encrypt(&key, &mut enc, 0, 0x200);
+
+        let mut cursor = std::io::Cursor::new(enc);
+        let err =
+            NcaHeader::read_at(&mut cursor, 0, NCA0_HEADER_LEN as u64, Some(&key)).unwrap_err();
+        assert_eq!(err.code(), "E_LAYOUT_UNEXPECTED");
+    }
+
+    #[test]
+    fn partial_encrypted_header_length_is_rejected() {
+        let key = [0x5Au8; 32];
+        let len = NCA0_HEADER_LEN + 1;
+        let enc = vec![0xAA; len];
+
+        let mut cursor = std::io::Cursor::new(enc);
+        let err = NcaHeader::read_at(&mut cursor, 0, len as u64, Some(&key)).unwrap_err();
+        assert_eq!(err.code(), "E_LAYOUT_UNEXPECTED");
     }
 
     #[test]

@@ -54,6 +54,17 @@ The workspace includes the Tauri GUI crate. Run the GUI setup (`npm ci` and `npm
 
 If you change the GUI or the bundling workflow, also verify that `npm run tauri build` still produces an installer.
 
+### Fuzzing
+
+The parsers are fuzzed with `cargo-fuzz` from the detached `fuzz/` crate. It requires nightly Rust and Node.js 22 or newer for the seed generator:
+
+```console
+node fuzz/scripts/generate-seeds.mjs
+cargo fuzz run nca -- -max_total_time=60
+```
+
+See [`fuzz/README.md`](fuzz/README.md) for the target list and CI details. Do not commit generated corpora or crash artifacts.
+
 ## Pull requests
 
 - Explain the problem and the chosen approach.
