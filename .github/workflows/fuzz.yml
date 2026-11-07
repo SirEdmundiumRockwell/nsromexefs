@@ -1,0 +1,69 @@
+name: Fuzz
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "crates/nsromexefs-core/**"
+      - "fuzz/**"
+      - ".github/workflows/fuzz.yml"
+  pull_request:
+    paths:
+      - "crates/nsromexefs-core/**"
+      - "fuzz/**"
+      - ".github/workflows/fuzz.yml"
+  schedule:
+    # Weekly longer session (Monday 04:00 UTC).
+    - cron: "0 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    name: Fuzz ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - containers
+          - nca
+          - metadata
+          - romfs
+          - bktr
+          - keys
+          - sha256sums
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: fuzz
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --locked
+      - name: Generate seed corpus
+        run: node fuzz/scripts/generate-seeds.mjs
+      - name: Build fuzz target
+        run: cargo fuzz build ${{ matrix.target }}
+      - name: Fuzz
+        env:
+          # Short on PR/push, longer on the weekly schedule.
+          MAX_TIME: ${{ github.event_name == 'schedule' && 600 || 60 }}
+        run: |
+          cargo fuzz run ${{ matrix.target }} -- \
+            -max_total_time=$MAX_TIME \
+            -timeout=10 \
+            -rss_limit_mb=4096
+      - name: Upload crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fuzz-${{ matrix.target }}-artifacts
+          path: fuzz/artifacts/
+          if-no-files-found: ignore
+          retention-days: 14

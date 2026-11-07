@@ -1,0 +1,65 @@
+[package]
+name = "nsromexefs-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+nsromexefs-core = { path = "../crates/nsromexefs-core" }
+
+[[bin]]
+name = "containers"
+path = "fuzz_targets/containers.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "nca"
+path = "fuzz_targets/nca.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "metadata"
+path = "fuzz_targets/metadata.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "romfs"
+path = "fuzz_targets/romfs.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "bktr"
+path = "fuzz_targets/bktr.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "keys"
+path = "fuzz_targets/keys.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "sha256sums"
+path = "fuzz_targets/sha256sums.rs"
+test = false
+doc = false
+bench = false
+
+# Detached from the root workspace: fuzzing needs nightly and libFuzzer, while
+# the normal build must stay on stable. The root workspace also excludes us.
+[workspace]

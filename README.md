@@ -166,6 +166,7 @@ npm run tauri dev
 
 - [Key file guide](docs/keys.md) — which key files are needed and how to handle them safely.
 - [GUI development guide](crates/nsromexefs-gui/README.md) — Tauri setup, sidecar builds, and installer packaging.
+- [Fuzzing harness](fuzz/README.md) — cargo-fuzz targets, synthetic seeds, and how to run them.
 - [Technical design](docs/design.es.md) — the original design document (Spanish), covering formats, cryptography, the extraction pipeline, and testing.
 - [Third-party notices and attributions](THIRD-PARTY-NOTICES.md).
 - [Changelog](CHANGELOG.md) — notable changes by release.
@@ -184,6 +185,9 @@ docs/
   design.es.md           technical design (Spanish)
   logo.png               project logo
   screenshot.png         desktop app screenshot
+fuzz/
+  fuzz_targets/          cargo-fuzz targets for the parsers
+  scripts/               synthetic seed corpus generator
 ```
 
 ## Credits

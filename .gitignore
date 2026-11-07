@@ -7,6 +7,12 @@ crates/nsromexefs-gui/src-tauri/gen/
 crates/nsromexefs-gui/src-tauri/binaries/*
 !crates/nsromexefs-gui/src-tauri/binaries/.gitkeep
 
+# Fuzzing: corpus generado, artefactos de fallos y build propio del crate
+/fuzz/target
+/fuzz/corpus
+/fuzz/artifacts
+/fuzz/coverage
+
 # Extraction state and temporary files
 *.nrx-tmp
 *.part

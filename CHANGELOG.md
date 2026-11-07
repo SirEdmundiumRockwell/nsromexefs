@@ -4,6 +4,16 @@ All notable changes to this project are documented in this file. The format is b
 
 ## [Unreleased]
 
+### Added
+
+- Detached `fuzz/` crate with cargo-fuzz targets for containers, NCA headers, metadata, RomFS, BKTR, key files, and `SHA256SUMS`, plus a synthetic seed generator.
+- A separate `Fuzz` workflow that builds every target on changes and runs a longer weekly session on nightly Rust.
+
+### Fixed
+
+- Truncated NCA3/NCA2 headers (0xA00..0xBFF bytes) are rejected instead of indexing past the buffer when a later section entry is non-empty.
+- AES-XTS helpers no longer panic on zero or non-block-aligned sector sizes, or on a trailing partial block.
+
 ## [0.1.1] - 2026-11-07
 
 ### Added

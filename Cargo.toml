@@ -5,6 +5,8 @@ members = [
     "crates/nsromexefs-cli",
     "crates/nsromexefs-gui/src-tauri",
 ]
+# El crate de fuzzing es independiente: necesita nightly y libFuzzer.
+exclude = ["fuzz"]
 
 [workspace.package]
 version = "0.1.1"
