@@ -110,9 +110,40 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  build-windows-gui:
+    name: Build Windows GUI installers
+    needs: validate
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: crates/nsromexefs-gui/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-windows-gui
+      - name: Install GUI dependencies
+        run: npm ci --prefix crates/nsromexefs-gui
+      - name: Build GUI installers
+        working-directory: crates/nsromexefs-gui
+        run: npm run tauri -- build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-windows-gui
+          path: |
+            target/release/bundle/msi/*.msi
+            target/release/bundle/nsis/*.exe
+          if-no-files-found: error
+          retention-days: 7
+
   draft-release:
     name: Create draft release
-    needs: [validate, build]
+    needs: [validate, build, build-windows-gui]
     runs-on: ubuntu-latest
     permissions:
       contents: write
