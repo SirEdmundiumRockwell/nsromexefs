@@ -13,7 +13,7 @@ jobs:
     name: Validate release tag
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.ref }}
       - name: Install Tauri Linux dependencies
@@ -23,6 +23,8 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 22
+      - name: Check version consistency
+        run: node scripts/version.mjs --check
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -32,15 +34,6 @@ jobs:
         run: npm --prefix crates/nsromexefs-gui run build
       - name: Prepare bundled CLI sidecar
         run: node crates/nsromexefs-gui/scripts/prepare-sidecar.mjs
-      - name: Match tag to workspace version
-        shell: bash
-        run: |
-          VERSION="$(sed -n '/^\[workspace.package\]/,/^\[/s/^version = "\([^"]*\)"$/\1/p' Cargo.toml)"
-          test -n "$VERSION"
-          test "v$VERSION" = "$GITHUB_REF_NAME" || {
-            echo "Tag $GITHUB_REF_NAME does not match workspace version $VERSION" >&2
-            exit 1
-          }
       - name: Check formatting
         run: cargo fmt --all -- --check
       - name: Clippy
@@ -69,7 +62,7 @@ jobs:
             archive: nsromexefs-x86_64-apple-darwin.tar.gz
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.ref }}
       - uses: dtolnay/rust-toolchain@stable
@@ -115,7 +108,7 @@ jobs:
     needs: validate
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.ref }}
       - uses: actions/setup-node@v6

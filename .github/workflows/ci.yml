@@ -29,6 +29,8 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: crates/nsromexefs-gui/package-lock.json
+      - name: Check version consistency
+        run: node scripts/version.mjs --check
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
