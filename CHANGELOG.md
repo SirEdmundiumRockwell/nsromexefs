@@ -4,6 +4,8 @@ All notable changes to this project are documented in this file. The format is b
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-11-07
+
 ### Added
 
 - Version synchronization script (`scripts/version.mjs`) and a CI consistency check.
@@ -12,8 +14,14 @@ All notable changes to this project are documented in this file. The format is b
 
 ### Changed
 
-- The release workflow now builds and attaches Windows MSI and NSIS installers.
-- Release workflow actions updated to `actions/checkout@v7`.
+- The release workflow now builds and attaches Windows MSI and NSIS installers for `v*` tags.
+- Release workflow actions updated (`checkout@v7`, `upload-artifact@v7`, `download-artifact@v8`).
+- Rust dependencies updated to the RustCrypto 2025 releases: `aes 0.9`, `ctr 0.10`, and `sha2 0.11`, with the crypto code migrated to the new cipher API.
+- JavaScript dependencies updated (Vite 8 and `@sveltejs/vite-plugin-svelte` 7); TypeScript stays on 6.x until `svelte-check` supports 7.
+
+### Fixed
+
+- Dependabot no longer proposes TypeScript major updates that break `svelte-check`.
 
 ## [0.1.0] - 2026-11-07
 
