@@ -28,7 +28,7 @@ No game content, keys, or console firmware are included. Everything runs locally
 > [!IMPORTANT]
 > **Development note:** This project was created with the assistance of AI tools. The maintainer reviews, tests, and maintains the code. Third-party software and documentation are credited in [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md).
 
-> **Status:** v0.1.0. The CLI and the desktop GUI share the same extraction engine. CLI release archives are built by GitHub Actions; the GUI can be packaged as a self-contained installer that bundles the CLI as a sidecar.
+> **Status:** v0.1.0. The CLI and the desktop GUI share the same extraction engine. Every release includes CLI archives for Windows, Linux, and macOS plus Windows MSI and NSIS installers for the desktop GUI, which bundle the CLI as a sidecar.
 
 ## Features
 
@@ -45,7 +45,7 @@ No game content, keys, or console firmware are included. Everything runs locally
 
 ## Quick start
 
-1. **Get a build.** Download the CLI archive for your platform from [Releases](https://github.com/SirEdmundiumRockwell/nsromexefs/releases) when available, or [build from source](#build-from-source).
+1. **Get a build.** Download the CLI archive for your platform, or the Windows installer for the desktop GUI, from [Releases](https://github.com/SirEdmundiumRockwell/nsromexefs/releases). You can also [build from source](#build-from-source).
 
 2. **Validate your keys.** `nsromexefs` does not distribute keys. Use only files obtained from your own console and pass them with the repeatable `-k` option. See the [key file guide](docs/keys.md).
 
@@ -95,6 +95,8 @@ The Tauri 2 + Svelte 5 desktop app wraps the same extraction engine and runs ent
 - **Local event log:** recent actions, warnings, and errors are recorded on the device, with personal paths and key-file names redacted. The log keeps up to 250 entries and can be downloaded or cleared.
 - **Bundled engine:** release builds include the CLI as a Tauri sidecar. End users do not need Rust or a separate CLI installation.
 
+On Windows, download the MSI or NSIS installer from [Releases](https://github.com/SirEdmundiumRockwell/nsromexefs/releases); both include the GUI and the CLI sidecar. The instructions below are for development or for building on other platforms.
+
 Build and run the GUI from `crates/nsromexefs-gui`:
 
 ```console
@@ -113,9 +115,20 @@ The installer is written to the workspace `target/release/bundle` directory and 
 
 ## Downloads and verification
 
-Release archives are built by GitHub Actions for Windows x64, Linux x64 (glibc), and macOS (Apple Silicon and Intel) when available. Each release includes `SHA256SUMS`; compare the archive digest with its entry before use. Releases are published from reviewed draft releases.
+Every release includes:
 
-Prebuilt GUI installers are not published yet. `npm run tauri build` produces one locally and bundles the CLI automatically.
+| Platform | Package |
+| --- | --- |
+| Windows x64 — CLI | `nsromexefs-x86_64-pc-windows-msvc.zip` |
+| Windows x64 — GUI (NSIS) | `nsromexefs_<version>_x64-setup.exe` |
+| Windows x64 — GUI (MSI) | `nsromexefs_<version>_x64_en-US.msi` |
+| Linux x64 (glibc) — CLI | `nsromexefs-x86_64-unknown-linux-gnu.tar.gz` |
+| macOS Apple Silicon — CLI | `nsromexefs-aarch64-apple-darwin.tar.gz` |
+| macOS Intel — CLI | `nsromexefs-x86_64-apple-darwin.tar.gz` |
+
+The Windows installers bundle the desktop GUI and the CLI sidecar, and add a Start Menu shortcut and an uninstaller. They require Windows 10 or 11 with the WebView2 runtime, which is present by default on current Windows releases. The CLI archives contain the command-line tool and the project documentation. The GUI can also be built from source on any supported platform.
+
+Each release includes `SHA256SUMS` with the checksum of every attached package; compare the digest before use. Releases are published from reviewed draft releases.
 
 > [!WARNING]
 > **Windows Smart App Control:** the Windows installers and executables built by this project are not code-signed. Smart App Control may block them even when you built them yourself. If that happens:

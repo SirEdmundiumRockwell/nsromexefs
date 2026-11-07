@@ -49,6 +49,8 @@ npm run check
 
 ## Build the installer
 
+Prebuilt Windows installers are attached to each [GitHub release](https://github.com/SirEdmundiumRockwell/nsromexefs/releases); they bundle the GUI and the CLI sidecar. Build locally when you want a different platform, a custom engine, or to test changes.
+
 `npm run tauri -- build` runs the frontend build and `npm run build:sidecar` through `beforeBuildCommand`, then writes the installer to the workspace `target/release/bundle` directory. The sidecar (`src-tauri/binaries/nsromexefs-<target-triple>`) is generated during the build and is not committed. Users do not need Rust or a separate CLI after installing.
 
 The optional CLI path in **Settings** remains available for development or for using an alternative engine build.
