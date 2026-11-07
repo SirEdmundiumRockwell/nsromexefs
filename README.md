@@ -137,7 +137,7 @@ Each release includes `SHA256SUMS` with the checksum of every attached package; 
 >
 > - Confirm the file came from this repository's Releases or from your own build, and verify its SHA-256 checksum.
 > - You can turn off Smart App Control under **Windows Security → App & browser control → Smart App Control**. Microsoft only allows turning it back on after a clean install or reset of Windows.
-> - Only disable it for files you trust. This project does not currently sign its binaries; code signing may be added in the future.
+> - Only disable it for files you trust. This project does not sign its binaries and does not plan to add code signing.
 
 ## Build from source
 

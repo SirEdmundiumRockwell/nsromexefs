@@ -1501,14 +1501,17 @@ nsromexefs/
 | Windows | `nsromexefs-x86_64-pc-windows-msvc.zip` (portable) + instaladores MSI y NSIS (GUI, sin firmar) |
 | Linux | `nsromexefs-x86_64-unknown-linux-gnu.tar.gz` (portable; requiere glibc compatible) |
 | macOS | `aarch64-apple-darwin` y `x86_64-apple-darwin` (tar.gz) |
-| Crates.io | `cargo install nsromexefs-cli` (planificado) |
+
+Los instaladores de GUI se distribuyen solo para Windows. En Linux y macOS se usa el código
+fuente; el proyecto no publica binarios de GUI para esas plataformas. Tampoco se publica en
+crates.io: el único canal oficial son las GitHub Releases.
 
 - El workflow de tag `v*` valida que el tag coincida con la versión Cargo, compila las cuatro
   variantes de CLI y los instaladores MSI/NSIS de Windows, y crea un borrador de GitHub Release
   con `SHA256SUMS`; una persona revisa y publica.
 - CI: fmt + Clippy + tests + build release en cada PR/push, en Windows, Linux y macOS.
-- Fuzzing corto y firma de código siguen pendientes; el workflow crea un borrador y la publicación
-  del release es manual.
+- La firma de código no está prevista. El fuzzing se ejecuta en un workflow aparte; el workflow
+  de release crea un borrador y la publicación es manual.
 - Sin auto-actualización en v1.
 
 ### 24.4 Configuración
