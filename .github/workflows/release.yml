@@ -146,6 +146,19 @@ jobs:
           pattern: dist-*
           path: dist
           merge-multiple: true
+      - name: Flatten downloaded artifacts
+        shell: bash
+        run: |
+          mkdir -p release-assets
+          find dist -type f -exec mv {} release-assets/ \;
+      - name: Verify expected assets
+        shell: bash
+        run: |
+          msi="$(find release-assets -maxdepth 1 -name '*.msi' | wc -l)"
+          exe="$(find release-assets -maxdepth 1 -name '*-setup.exe' | wc -l)"
+          test "$msi" -eq 1
+          test "$exe" -eq 1
+          test "$(find release-assets -maxdepth 1 -name 'nsromexefs-*' | wc -l)" -ge 4
       - name: Generate SHA256SUMS
         shell: bash
         run: |
@@ -153,15 +166,15 @@ jobs:
           import hashlib
           from pathlib import Path
 
-          dist = Path("dist")
-          archives = sorted(path for path in dist.iterdir() if path.is_file())
+          assets = Path("release-assets")
+          archives = sorted(path for path in assets.iterdir() if path.is_file())
           if not archives:
-              raise SystemExit("No release archives were downloaded")
+              raise SystemExit("No release assets were downloaded")
           lines = []
           for path in archives:
               digest = hashlib.sha256(path.read_bytes()).hexdigest()
               lines.append(f"{digest}  {path.name}")
-          (dist / "SHA256SUMS").write_text("\n".join(lines) + "\n", encoding="ascii")
+          (assets / "SHA256SUMS").write_text("\n".join(lines) + "\n", encoding="ascii")
           PY
       - name: Create draft GitHub release
         uses: softprops/action-gh-release@v2
@@ -171,4 +184,4 @@ jobs:
           draft: true
           generate_release_notes: true
           fail_on_unmatched_files: true
-          files: dist/*
+          files: release-assets/*
