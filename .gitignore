@@ -13,6 +13,9 @@ crates/nsromexefs-gui/src-tauri/binaries/*
 /fuzz/artifacts
 /fuzz/coverage
 
+# Codebase Memory local index
+/.codebase-memory/
+
 # Extraction state and temporary files
 *.nrx-tmp
 *.part
